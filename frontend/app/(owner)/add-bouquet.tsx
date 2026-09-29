@@ -36,7 +36,7 @@ export default function AddBouquet() {
     try {
       const uploaded: string[] = [];
       for (const a of res.assets) {
-        const up = await uploadFile(a.uri, "angle.jpg", "image/jpeg");
+        const up = await uploadFile(a.uri, a.fileName || "angle.jpg", a.mimeType || "image/jpeg");
         uploaded.push(up.url);
       }
       setImages((cur) => [...cur, ...uploaded].slice(0, 12));
