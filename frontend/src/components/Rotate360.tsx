@@ -11,10 +11,11 @@ import { mediaUrl } from "@/src/api";
  * Drag/swipe left-right to rotate through the uploaded angles, or tap the
  * on-screen chevrons.
  *
- * IMPORTANT for Android: we render exactly ONE <Image> for the current frame
- * (instead of stacking every frame with opacity), because stacked/opacity-0
- * expo-images render unreliably on Android. All other angles are prefetched
- * so switching stays instant.
+ * IMPORTANT for Android: we render a SINGLE <Image> for the current frame and
+ * force a fresh mount per frame via `key`/`recyclingKey`. expo-image on Android
+ * does NOT reliably reload when only `source.uri` changes on the same mounted
+ * component (it shows the old/blank image), which is why rotation appeared to
+ * "do nothing". All angles are prefetched so the swap is instant.
  */
 export default function Rotate360({ images, height = 360 }: { images: string[]; height?: number }) {
   const frames = useMemo(
@@ -29,8 +30,9 @@ export default function Rotate360({ images, height = 360 }: { images: string[]; 
   const startIndex = useSharedValue(0);
 
   const safeIndex = n > 0 ? ((index % n) + n) % n : 0;
+  const currentUri = frames[safeIndex];
 
-  // Preload every angle so rotation is instant on all platforms.
+  // Preload every angle so rotation is instant.
   useEffect(() => {
     if (frames.length) Image.prefetch(frames).catch(() => {});
   }, [frames]);
@@ -67,11 +69,14 @@ export default function Rotate360({ images, height = 360 }: { images: string[]; 
   return (
     <GestureDetector gesture={pan}>
       <View style={[styles.wrap, { height }]} onLayout={onLayout} testID="rotate-360">
+        {/* key forces a fresh mount per frame so Android always shows the new photo */}
         <Image
-          source={{ uri: frames[safeIndex] }}
-          style={StyleSheet.absoluteFillObject}
+          key={currentUri}
+          recyclingKey={currentUri}
+          source={{ uri: currentUri }}
+          style={styles.frame}
           contentFit="cover"
-          transition={0}
+          transition={120}
           cachePolicy="memory-disk"
           onLoadStart={() => setLoading(true)}
           onLoad={() => setLoading(false)}
@@ -116,6 +121,7 @@ export default function Rotate360({ images, height = 360 }: { images: string[]; 
 
 const styles = StyleSheet.create({
   wrap: { width: "100%", overflow: "hidden", backgroundColor: colors.surfaceSecondary },
+  frame: { width: "100%", height: "100%" },
   loader: { ...StyleSheet.absoluteFillObject, alignItems: "center", justifyContent: "center" },
   badge: { position: "absolute", top: spacing.md, left: spacing.md, backgroundColor: "rgba(43,30,34,0.72)", paddingHorizontal: spacing.md, paddingVertical: 6, borderRadius: radius.pill },
   badgeText: { color: "#FFFFFF", fontWeight: "800", fontSize: 12, letterSpacing: 1 },

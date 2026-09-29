@@ -40,6 +40,11 @@ Design and develop ELAYA, a mobile flower marketplace for Biñan, Laguna, with a
 - Verified end-to-end via API: `/api/upload` → object storage → `/api/files/{path}` returns HTTP 200; product create with multi-angle `images[]` persists `image` + full `images` array; product detail returns all angles; marketplace renders photos + 360° badges (screenshot confirmed).
 - Owner multi-photo uploader cap raised 8 → 12 angles for smoother 360.
 
+## 360° Viewer — Android force-remount fix (2026-06-29, follow-up 2)
+- User still saw blank/non-updating 360 on Android. Root cause: `expo-image` on Android does NOT reliably reload when only `source.uri` changes on the same mounted component (shows stale/blank) — so the first frame could be blank and swiping "did nothing". Works on web (React re-renders), which masked it in earlier tests.
+- Fix: `Rotate360` renders a single `<Image>` with `key={currentUri}` + `recyclingKey={currentUri}`, forcing a fresh mount per frame so Android always paints the new photo; `transition={120}`, `cachePolicy=memory-disk`, and `Image.prefetch(allFrames)` keep swaps instant. Verified rotation renders each distinct angle (front→right→back→left).
+- Also confirmed uploads themselves are Android-safe: Expo's global FormData patch stores `['file', {uri,name,type}]` which RN's native `getParts()`/XHR serialize correctly.
+
 ## Seeded Accounts
 See `/app/memory/test_credentials.md`.
 
