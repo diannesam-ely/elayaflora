@@ -43,6 +43,11 @@ Design and develop ELAYA, a mobile flower marketplace for Biñan, Laguna, with a
 ## Seeded Accounts
 See `/app/memory/test_credentials.md`.
 
+## 360° Viewer Rotation Fix (2026-06-29)
+- Symptom reported as "uploaded photos not displaying" in the 360° view. Verified the images DO load and connect correctly (owner upload → `images[]` on product → customer detail → `Rotate360`); the real defect was that the rotate GESTURE never advanced the frame, so only the first angle (front) was ever visible.
+- Cause: the old `Rotate360` used React Native `PanResponder`, which loses the horizontal drag to the surrounding vertical `ScrollView` on Android.
+- Fix: rewrote `src/components/Rotate360.tsx` with `react-native-gesture-handler` `GestureDetector` + `Gesture.Pan().activeOffsetX([-8,8])` (horizontal rotate wins, vertical scroll still works) driving the frame index via a reanimated shared value + `runOnJS`. Added tappable ‹ › chevrons (testIDs `rotate-left`/`rotate-right`) as a guaranteed fallback, a live `index/total` counter, and per-angle `testID angle-<i>`. Verified: 5 distinct uploaded angles (front→right→back→left) cycle correctly. Works for any count up to 12; images persist across refresh (stored in Mongo + object storage); marketplace/home use `image`, detail uses full `images[]` — same saved data.
+
 ## Android Image Upload Fix (2026-06-29)
 - Bug: "Unsupported FormDataPart implementation" when a Shop Owner added bouquet photos on Android. Root cause verified in Expo source: `expo/src/winter/runtime.native.ts` runs `install('fetch', ...)`, replacing the global `fetch` on native with Expo's WinterCG fetch, whose `convertFormData` rejects the legacy React Native `{ uri, name, type }` file part.
 - Fix: `src/upload.ts` now uploads via `XMLHttpRequest` on native (Android/iOS), which uses React Native's own multipart networking and fully supports gallery/camera `file://` + `content://` URIs. Web keeps the standard `fetch` + Blob path. Derives filename/mime from the picked asset; robust error messages; 60s timeout. Multi-photo (up to 12) selection and previews unchanged. All callers (`add-bouquet`, `application` permit/logo) go through the fixed `uploadFile`.

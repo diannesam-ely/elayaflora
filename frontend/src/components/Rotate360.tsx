@@ -1,84 +1,99 @@
-import { useMemo, useRef, useState } from "react";
-import { View, Text, StyleSheet, PanResponder, LayoutChangeEvent } from "react-native";
+import { useMemo, useState } from "react";
+import { View, Text, StyleSheet, Pressable, LayoutChangeEvent } from "react-native";
 import { Image } from "expo-image";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import { useSharedValue, runOnJS } from "react-native-reanimated";
 import { colors, spacing, radius } from "@/src/theme";
 import { mediaUrl } from "@/src/api";
 
 /**
  * Interactive 360° viewer built from multiple photos of the same bouquet.
- * Drag/swipe left-right to rotate through the angles (front, sides, back...).
+ * Drag/swipe left-right to rotate through the uploaded angles, or tap the
+ * on-screen chevrons. Uses react-native-gesture-handler so the horizontal
+ * rotate gesture works reliably on Android while the surrounding vertical
+ * ScrollView keeps handling up/down scrolls.
  */
 export default function Rotate360({ images, height = 360 }: { images: string[]; height?: number }) {
-  const frames = useMemo(() => (images && images.length ? images : []), [images]);
+  const frames = useMemo(() => (images && images.length ? images.filter(Boolean) : []), [images]);
+  const n = frames.length;
   const [index, setIndex] = useState(0);
   const [dragging, setDragging] = useState(false);
-  const widthRef = useRef(1);
-  const startIndex = useRef(0);
+  const width = useSharedValue(1);
+  const startIndex = useSharedValue(0);
 
-  const n = frames.length;
+  const safeIndex = n > 0 ? ((index % n) + n) % n : 0;
 
-  const pan = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => n > 1,
-      onMoveShouldSetPanResponder: (_e, g) => n > 1 && Math.abs(g.dx) > 2,
-      onPanResponderGrant: () => {
-        setDragging(true);
-        startIndex.current = indexRef.current;
-      },
-      onPanResponderMove: (_e, g) => {
-        const perFrame = widthRef.current / Math.max(n, 6);
-        const delta = Math.round(-g.dx / perFrame);
-        let next = (startIndex.current + delta) % n;
-        if (next < 0) next += n;
-        setIndex(next);
-      },
-      onPanResponderRelease: () => setDragging(false),
-      onPanResponderTerminate: () => setDragging(false),
-    }),
-  ).current;
+  const goTo = (i: number) => setIndex(n > 0 ? ((i % n) + n) % n : 0);
+  const setDrag = (d: boolean) => setDragging(d);
 
-  // keep a ref mirror of index for gesture math
-  const indexRef = useRef(0);
-  indexRef.current = index;
+  const pan = Gesture.Pan()
+    .activeOffsetX([-8, 8]) // only claim the gesture on horizontal movement
+    .onBegin(() => {
+      startIndex.value = safeIndex;
+      runOnJS(setDrag)(true);
+    })
+    .onUpdate((e) => {
+      if (n <= 1) return;
+      const perFrame = Math.max(22, Math.min(64, width.value / n));
+      const delta = Math.round(-e.translationX / perFrame);
+      runOnJS(goTo)(startIndex.value + delta);
+    })
+    .onFinalize(() => runOnJS(setDrag)(false));
 
   const onLayout = (e: LayoutChangeEvent) => {
-    widthRef.current = e.nativeEvent.layout.width || 1;
+    width.value = e.nativeEvent.layout.width || 1;
   };
 
   if (n === 0) {
-    return <View style={[styles.wrap, { height, backgroundColor: colors.surfaceSecondary }]} />;
+    return (
+      <View style={[styles.wrap, { height, backgroundColor: colors.surfaceSecondary, alignItems: "center", justifyContent: "center" }]}>
+        <Text style={{ color: colors.muted, fontSize: 13 }}>No photos yet</Text>
+      </View>
+    );
   }
 
   return (
-    <View style={[styles.wrap, { height }]} onLayout={onLayout} {...pan.panHandlers} testID="rotate-360">
-      {/* preload all frames so rotation is instant */}
-      {frames.map((f, i) => (
-        <Image
-          key={i}
-          source={{ uri: mediaUrl(f) }}
-          style={[StyleSheet.absoluteFillObject, { opacity: i === index ? 1 : 0 }]}
-          contentFit="cover"
-          transition={0}
-          cachePolicy="memory-disk"
-        />
-      ))}
+    <GestureDetector gesture={pan}>
+      <View style={[styles.wrap, { height }]} onLayout={onLayout} testID="rotate-360">
+        {/* preload every uploaded angle so rotation is instant */}
+        {frames.map((f, i) => (
+          <Image
+            key={`${i}-${f}`}
+            source={{ uri: mediaUrl(f) }}
+            style={[StyleSheet.absoluteFillObject, { opacity: i === safeIndex ? 1 : 0 }]}
+            contentFit="cover"
+            transition={0}
+            cachePolicy="memory-disk"
+            testID={`angle-${i}`}
+          />
+        ))}
 
-      {n > 1 && (
-        <>
-          <View style={styles.badge} pointerEvents="none">
-            <Text style={styles.badgeText}>360°</Text>
-          </View>
-          <View style={[styles.hint, dragging && { opacity: 0 }]} pointerEvents="none">
-            <Text style={styles.hintText}>↔  Drag to rotate</Text>
-          </View>
-          <View style={styles.dots} pointerEvents="none">
-            {frames.map((_, i) => (
-              <View key={i} style={[styles.dot, i === index && styles.dotActive]} />
-            ))}
-          </View>
-        </>
-      )}
-    </View>
+        {n > 1 && (
+          <>
+            <View style={styles.badge} pointerEvents="none">
+              <Text style={styles.badgeText}>360°</Text>
+            </View>
+
+            {/* Tap fallbacks — guarantee rotation works on every device */}
+            <Pressable testID="rotate-left" onPress={() => goTo(safeIndex - 1)} style={[styles.chev, styles.chevLeft]} hitSlop={8}>
+              <Text style={styles.chevText}>‹</Text>
+            </Pressable>
+            <Pressable testID="rotate-right" onPress={() => goTo(safeIndex + 1)} style={[styles.chev, styles.chevRight]} hitSlop={8}>
+              <Text style={styles.chevText}>›</Text>
+            </Pressable>
+
+            <View style={[styles.hint, dragging && { opacity: 0 }]} pointerEvents="none">
+              <Text style={styles.hintText}>↔  Drag or tap ‹ › to rotate · {safeIndex + 1}/{n}</Text>
+            </View>
+            <View style={styles.dots} pointerEvents="none">
+              {frames.map((_, i) => (
+                <View key={i} style={[styles.dot, i === safeIndex && styles.dotActive]} />
+              ))}
+            </View>
+          </>
+        )}
+      </View>
+    </GestureDetector>
   );
 }
 
@@ -86,6 +101,10 @@ const styles = StyleSheet.create({
   wrap: { width: "100%", overflow: "hidden", backgroundColor: colors.surfaceSecondary },
   badge: { position: "absolute", top: spacing.md, left: spacing.md, backgroundColor: "rgba(43,30,34,0.72)", paddingHorizontal: spacing.md, paddingVertical: 6, borderRadius: radius.pill },
   badgeText: { color: "#FFFFFF", fontWeight: "800", fontSize: 12, letterSpacing: 1 },
+  chev: { position: "absolute", top: "50%", marginTop: -22, width: 44, height: 44, borderRadius: 22, backgroundColor: "rgba(255,255,255,0.85)", alignItems: "center", justifyContent: "center" },
+  chevLeft: { left: spacing.md },
+  chevRight: { right: spacing.md },
+  chevText: { fontSize: 26, fontWeight: "800", color: colors.onSurface, lineHeight: 30 },
   hint: { position: "absolute", bottom: spacing.lg, alignSelf: "center", backgroundColor: "rgba(43,30,34,0.6)", paddingHorizontal: spacing.md, paddingVertical: 8, borderRadius: radius.pill },
   hintText: { color: "#FFFFFF", fontSize: 12, fontWeight: "600" },
   dots: { position: "absolute", bottom: spacing.sm, alignSelf: "center", flexDirection: "row", gap: 5 },
