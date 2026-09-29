@@ -30,7 +30,7 @@ export default function AddBouquet() {
     setErr(null);
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) { setErr("Photo permission is needed to add bouquet angles."); return; }
-    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], allowsMultipleSelection: true, selectionLimit: 8, quality: 0.7 });
+    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], allowsMultipleSelection: true, selectionLimit: 12, quality: 0.7 });
     if (res.canceled || !res.assets?.length) return;
     setBusy(true);
     try {
@@ -39,7 +39,7 @@ export default function AddBouquet() {
         const up = await uploadFile(a.uri, "angle.jpg", "image/jpeg");
         uploaded.push(up.url);
       }
-      setImages((cur) => [...cur, ...uploaded].slice(0, 8));
+      setImages((cur) => [...cur, ...uploaded].slice(0, 12));
     } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
   };
 
@@ -72,7 +72,7 @@ export default function AddBouquet() {
       </View>
       <KeyboardAwareScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md, paddingBottom: insets.bottom + spacing.xxl }} keyboardShouldPersistTaps="handled" bottomOffset={20}>
         <Text style={styles.label}>360° Photos (front, sides, back...)</Text>
-        <Text style={styles.hint}>Upload 2–8 photos of the same bouquet from different angles. Customers swipe to rotate.</Text>
+        <Text style={styles.hint}>Upload 2–12 photos of the same bouquet from different angles (front, back, left, right...). Customers swipe to rotate.</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm, paddingVertical: spacing.xs }}>
           {images.map((img, i) => (
             <View key={i} style={styles.thumbWrap}>

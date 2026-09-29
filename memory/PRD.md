@@ -34,6 +34,12 @@ Design and develop ELAYA, a mobile flower marketplace for Biñan, Laguna, with a
 - Endpoints: `GET /products/{id}/reviews`, `GET /shops/{id}/reviews`, `GET /reviews/eligibility`, `POST /reviews`. Aggregates `rating_avg`/`rating_count` stored on product & shop and recomputed on each review; owner gets a "New review" notification.
 - UI: star summary + review list + gated "Write/Edit review" composer on product detail; shop rating + reviews on shop detail; star badges on marketplace cards. Reusable `src/components/Stars.tsx`.
 
+## Fix — Restored after GitHub import (2026-06-29)
+- Root cause: gitignored `.env` files were not imported, so backend crashed (`KeyError: MONGO_URL`) and the app was fully down. Because `EXPO_PUBLIC_BACKEND_URL` was empty, owner-uploaded product photos (served as `/api/files/...`) resolved to broken URLs and the whole product feed failed — this was the "customers can't see photos" report.
+- Recreated `backend/.env` (MONGO_URL, DB_NAME, JWT_SECRET, PAYMONGO_SECRET_KEY, EMERGENT_LLM_KEY for object storage, APP_URL) and `frontend/.env` (EXPO_PUBLIC_BACKEND_URL + packager vars).
+- Verified end-to-end via API: `/api/upload` → object storage → `/api/files/{path}` returns HTTP 200; product create with multi-angle `images[]` persists `image` + full `images` array; product detail returns all angles; marketplace renders photos + 360° badges (screenshot confirmed).
+- Owner multi-photo uploader cap raised 8 → 12 angles for smoother 360.
+
 ## Seeded Accounts
 See `/app/memory/test_credentials.md`.
 

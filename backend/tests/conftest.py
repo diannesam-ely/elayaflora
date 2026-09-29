@@ -2,7 +2,7 @@ import os
 import pytest
 import requests
 
-BASE_URL = os.environ.get("EXPO_PUBLIC_BACKEND_URL") or "https://7e8bd2f5-5617-4224-a622-6af7266e8f4f.preview.emergentagent.com"
+BASE_URL = os.environ.get("EXPO_PUBLIC_BACKEND_URL") or "https://bloom-360-view.preview.emergentagent.com"
 BASE_URL = BASE_URL.rstrip("/")
 
 ADMIN = {"email": "admin@elaya.ph", "password": "Admin123!"}
