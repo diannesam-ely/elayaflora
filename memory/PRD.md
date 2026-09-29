@@ -43,6 +43,11 @@ Design and develop ELAYA, a mobile flower marketplace for Biñan, Laguna, with a
 ## Seeded Accounts
 See `/app/memory/test_credentials.md`.
 
+## 360° Viewer — Android-robust render (2026-06-29, follow-up)
+- Follow-up after user still saw blank angles on their Android device. Root risk: the viewer stacked every angle as absolutely-positioned expo-images toggled by opacity, which renders unreliably on Android (blank frames).
+- Fix: `Rotate360` now renders exactly ONE `<Image>` for the current frame (source uri changes on rotate) and `Image.prefetch()`es all angles up front so switching stays instant. Added a loading spinner per frame. Kept gesture-handler `Pan().activeOffsetX` + tap chevrons + counter/dots. `mediaUrl` confirmed to build absolute `https://.../api/files/...` URLs (correct on native).
+- Verified on a 5-angle bouquet (FRONT→RIGHT→BACK→LEFT) each distinct uploaded image renders and cycles correctly. Only one viewer exists (product detail); home "360°" card just links to a product. NOTE for user: bouquets created while the upload was broken have empty image arrays — they must add a new bouquet (or re-upload photos) after the XHR upload fix for angles to appear.
+
 ## 360° Viewer Rotation Fix (2026-06-29)
 - Symptom reported as "uploaded photos not displaying" in the 360° view. Verified the images DO load and connect correctly (owner upload → `images[]` on product → customer detail → `Rotate360`); the real defect was that the rotate GESTURE never advanced the frame, so only the first angle (front) was ever visible.
 - Cause: the old `Rotate360` used React Native `PanResponder`, which loses the horizontal drag to the surrounding vertical `ScrollView` on Android.

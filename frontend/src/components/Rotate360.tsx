@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { View, Text, StyleSheet, Pressable, LayoutChangeEvent } from "react-native";
+import { useEffect, useMemo, useState } from "react";
+import { View, Text, StyleSheet, Pressable, LayoutChangeEvent, ActivityIndicator } from "react-native";
 import { Image } from "expo-image";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { useSharedValue, runOnJS } from "react-native-reanimated";
@@ -9,25 +9,37 @@ import { mediaUrl } from "@/src/api";
 /**
  * Interactive 360° viewer built from multiple photos of the same bouquet.
  * Drag/swipe left-right to rotate through the uploaded angles, or tap the
- * on-screen chevrons. Uses react-native-gesture-handler so the horizontal
- * rotate gesture works reliably on Android while the surrounding vertical
- * ScrollView keeps handling up/down scrolls.
+ * on-screen chevrons.
+ *
+ * IMPORTANT for Android: we render exactly ONE <Image> for the current frame
+ * (instead of stacking every frame with opacity), because stacked/opacity-0
+ * expo-images render unreliably on Android. All other angles are prefetched
+ * so switching stays instant.
  */
 export default function Rotate360({ images, height = 360 }: { images: string[]; height?: number }) {
-  const frames = useMemo(() => (images && images.length ? images.filter(Boolean) : []), [images]);
+  const frames = useMemo(
+    () => (images && images.length ? images.filter(Boolean).map((f) => mediaUrl(f)!).filter(Boolean) : []),
+    [images]
+  );
   const n = frames.length;
   const [index, setIndex] = useState(0);
   const [dragging, setDragging] = useState(false);
+  const [loading, setLoading] = useState(true);
   const width = useSharedValue(1);
   const startIndex = useSharedValue(0);
 
   const safeIndex = n > 0 ? ((index % n) + n) % n : 0;
 
+  // Preload every angle so rotation is instant on all platforms.
+  useEffect(() => {
+    if (frames.length) Image.prefetch(frames).catch(() => {});
+  }, [frames]);
+
   const goTo = (i: number) => setIndex(n > 0 ? ((i % n) + n) % n : 0);
   const setDrag = (d: boolean) => setDragging(d);
 
   const pan = Gesture.Pan()
-    .activeOffsetX([-8, 8]) // only claim the gesture on horizontal movement
+    .activeOffsetX([-8, 8]) // claim only on horizontal movement; vertical scroll passes through
     .onBegin(() => {
       startIndex.value = safeIndex;
       runOnJS(setDrag)(true);
@@ -46,7 +58,7 @@ export default function Rotate360({ images, height = 360 }: { images: string[]; 
 
   if (n === 0) {
     return (
-      <View style={[styles.wrap, { height, backgroundColor: colors.surfaceSecondary, alignItems: "center", justifyContent: "center" }]}>
+      <View style={[styles.wrap, { height, alignItems: "center", justifyContent: "center" }]}>
         <Text style={{ color: colors.muted, fontSize: 13 }}>No photos yet</Text>
       </View>
     );
@@ -55,18 +67,23 @@ export default function Rotate360({ images, height = 360 }: { images: string[]; 
   return (
     <GestureDetector gesture={pan}>
       <View style={[styles.wrap, { height }]} onLayout={onLayout} testID="rotate-360">
-        {/* preload every uploaded angle so rotation is instant */}
-        {frames.map((f, i) => (
-          <Image
-            key={`${i}-${f}`}
-            source={{ uri: mediaUrl(f) }}
-            style={[StyleSheet.absoluteFillObject, { opacity: i === safeIndex ? 1 : 0 }]}
-            contentFit="cover"
-            transition={0}
-            cachePolicy="memory-disk"
-            testID={`angle-${i}`}
-          />
-        ))}
+        <Image
+          source={{ uri: frames[safeIndex] }}
+          style={StyleSheet.absoluteFillObject}
+          contentFit="cover"
+          transition={0}
+          cachePolicy="memory-disk"
+          onLoadStart={() => setLoading(true)}
+          onLoad={() => setLoading(false)}
+          onError={() => setLoading(false)}
+          testID={`angle-${safeIndex}`}
+        />
+
+        {loading && (
+          <View style={styles.loader} pointerEvents="none">
+            <ActivityIndicator color={colors.brandPrimary} />
+          </View>
+        )}
 
         {n > 1 && (
           <>
@@ -99,6 +116,7 @@ export default function Rotate360({ images, height = 360 }: { images: string[]; 
 
 const styles = StyleSheet.create({
   wrap: { width: "100%", overflow: "hidden", backgroundColor: colors.surfaceSecondary },
+  loader: { ...StyleSheet.absoluteFillObject, alignItems: "center", justifyContent: "center" },
   badge: { position: "absolute", top: spacing.md, left: spacing.md, backgroundColor: "rgba(43,30,34,0.72)", paddingHorizontal: spacing.md, paddingVertical: 6, borderRadius: radius.pill },
   badgeText: { color: "#FFFFFF", fontWeight: "800", fontSize: 12, letterSpacing: 1 },
   chev: { position: "absolute", top: "50%", marginTop: -22, width: 44, height: 44, borderRadius: 22, backgroundColor: "rgba(255,255,255,0.85)", alignItems: "center", justifyContent: "center" },
