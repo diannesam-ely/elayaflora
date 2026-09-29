@@ -1,58 +1,41 @@
-# Elaya - Multi-Role Flower Marketplace
+# ELAYA — Product Requirements Document
 
-Elaya is a flower marketplace mobile app operating in Biñan, Laguna, Philippines. It has three distinct roles with completely different dashboards:
+## Original Problem Statement
+Design and develop ELAYA, a mobile flower marketplace for Biñan, Laguna, with an Interactive 360° bouquet view, GPS/maps for location-based ordering, three delivery options with tracking, GCash + Cash-on-Delivery payments, and a Shop Owner Registration + Admin Approval system. Imported from an existing GitHub repo (Expo + FastAPI + MongoDB) and extended.
 
-- **Customer** — browse marketplace, customize bouquets in 3D Studio, cart, checkout, live delivery tracking
-- **Flower Shop Owner** — manage their own shop, add flowers/bouquets/wrappings, receive & progress customer orders
-- **Admin** — system-wide overview, manage users (customers + shop owners), shops, and all products
+## Architecture
+- Frontend: Expo Router (React Native), 3 role zones — `(customer)`, `(owner)`, `(admin)` — plus `(auth)`. Theme tokens in `src/theme.ts` (blush/burgundy floral).
+- Backend: FastAPI (`backend/server.py`) + MongoDB (motor). JWT email/password auth, 3 roles.
+- Storage: Emergent Managed Object Storage (`backend/storage.py`) for bouquet photos & business permits via `/api/upload` + `/api/files/{path}`.
+- Payments: PayMongo GCash (Payment Intent → attach → redirect; polling reconciliation, no webhook secret) + COD.
+- Maps: OpenStreetMap/Leaflet in a WebView (`src/components/LeafletMap.tsx`); Google Maps key can be added later.
+- 360° viewer: `src/components/Rotate360.tsx` (drag/swipe through multiple photos).
 
-## Stack
-- **Backend**: FastAPI + MongoDB (motor) with JWT auth (bcrypt hashing) and role-based access control
-- **Frontend**: Expo Router (React Native), TanStack Query, expo-gl + three.js (real 3D bouquet studio), WebView + Leaflet/OSM for delivery tracking, expo-linear-gradient
-- **Design**: Elegant editorial palette — pink floral brand (#FF758C / #FF7EB3) on ivory backgrounds
+## User Personas
+- Customer: browses bouquets, inspects 360°, finds nearby shops via GPS, orders with a delivery method + GCash/COD, tracks delivery.
+- Shop Owner: registers, submits application for approval, manages bouquets (multi-photo 360), orders, delivery methods, shares live rider location.
+- Admin: reviews shop applications (view permit + details), approves/rejects, monitors counts and all orders/users.
 
-## Role-Based Routing
-- Login checks the user's role from the JWT/DB and redirects:
-  - customer → `/(customer)/home`
-  - flower_owner → `/(owner)/dashboard`
-  - admin → `/(admin)/overview`
-- The root `AuthGate` prevents any user from entering another role's route group.
+## Core Requirements (static)
+1. Interactive 360° view from multiple owner-uploaded photos — DONE
+2. GPS + nearby-shop matching, all Biñan shops shown, sorted by distance — DONE
+3. Three delivery methods (In-House w/ tracking, Third-Party simulated, Pick-Up) — DONE
+4. GCash (PayMongo, records reference, notifies owner on paid) + COD — DONE
+5. Shop Owner Registration + Admin Approval (pending/approved/rejected, re-apply) — DONE
+6. Business permit file upload — DONE
 
-## Seeded Demo Accounts
-| Role | Email | Password |
-|------|-------|----------|
-| Admin | admin@elaya.ph | Admin123! |
-| Shop Owner (Bloom & Petal) | owner@elaya.ph | Owner123! |
-| Shop Owner (Rosa Del Sol) | owner2@elaya.ph | Owner123! |
-| Customer | customer@elaya.ph | Customer123! |
+## Implemented (2026-06)
+- Recreated missing `.env` files; fixed storage init (lazy key read); removed 3D studio & flower/wrapping flows.
+- Backend: owner application + approval endpoints, object-storage upload/download, products with `images[]`, shops with lat/lng + distance, orders with per-method `status_flow`, rider location, PayMongo GCash + COD, notifications, admin overview/shop-owners/orders.
+- Frontend: sign-up (basic owner account → application), owner application form (permit + GPS pin), owner dashboard with approval gating, add-bouquet multi-photo uploader, products/orders/order-detail (status advance + live location), owner profile (shop info + delivery methods). Customer home (360 highlight), shops map (GPS), shop detail, product 360 viewer, checkout (delivery method + GCash/COD), tracking (map + status + pay). Admin overview, shop-owner management (approve/reject + permit), all-orders, users.
+- Testing: 29/29 backend tests pass; frontend smoke passes; no critical bugs.
 
-Plus 6 flowers, 3 bouquets, 5 wrappings across 2 shops.
+## Seeded Accounts
+See `/app/memory/test_credentials.md`.
 
-## Key Features Delivered
-### Customer
-- Welcome → sign-in (Shopee-style bottom sheet with quick-fill demo buttons)
-- Home with hero, curated bouquets carousel, local shop cards
-- Marketplace with product-type filter chips
-- Product detail with color/qty selectors and favorites
-- **3D Bouquet Studio** — real WebGL scene (expo-gl + three.js) with live flower/wrap/ribbon/quantity customization
-- Cart, checkout (COD/GCash), and live order tracking with WebView map + status stepper
+## Backlog / Remaining
+- P1: Real Google Maps API key + native `react-native-maps`; real Lalamove/Grab courier API; PayMongo webhook signing for instant confirmation.
+- P2: Order state machine hardening (forward-only), upload size/MIME caps, permit file auth, push notifications (on request), ratings/reviews, promo codes.
 
-### Flower Shop Owner
-- Dashboard hero (shop image) with metric cards
-- My Products (Flowers / Bouquets / Wrappings tabs, delete guarded to own products)
-- Add Flower / Add Bouquet / Add Wrapping forms
-- Customer Orders with one-tap status advancement pipeline
-
-### Admin
-- Overview cards: customers, owners, shops, products, orders, pending, completed, revenue
-- Users list with role filter + enable/disable action
-- Shops list with activate/deactivate
-- All Products browser (Flowers / Bouquets / Wrappings tabs)
-
-## Backend endpoints (prefixed `/api`)
-- Auth: `POST /auth/register`, `POST /auth/login`, `GET /auth/me`
-- Shops: `GET /shops`, `GET/PUT /shops/mine`, `PATCH /admin/shops/{id}/status`
-- Products: `GET /products` (filter by type/shop), `GET /products/{id}`, `POST /owner/flowers|bouquets|wrappings`, `GET/PUT/DELETE /owner/products/{id}`
-- Orders: `POST /orders`, `GET /orders/mine`, `GET /orders/{id}`, `GET /owner/orders`, `PATCH /owner/orders/{id}/status`, `PATCH /owner/orders/{id}/rider`
-- Admin: `GET /admin/overview`, `GET /admin/users`, `PATCH /admin/users/{id}/status`, `GET /admin/orders`
-- Favorites: `GET /favorites`, `POST/DELETE /favorites/{pid}`
+## Next Tasks
+- Add Google Maps key when provided; wire third-party courier API if keys given.

@@ -1,0 +1,51 @@
+{
+  "summary": "Full backend + smoke frontend testing for Elaya rebuild. Rewrote pytest suite to cover the new features: shop-owner registration, application submission with business_permit_url, admin approve/reject/re-apply, uploads via /api/upload + /api/files/{path} object storage, 360° bouquet products, GPS-sorted approved-only /shops, delivery methods (in_house/third_party/pickup) with per-method status_flow, orders + rider updates, COD payment + owner notification, PayMongo GCash intent creation, admin overview shop counters, and role enforcement. 29/29 backend tests PASS against public URL. Frontend smoke-tested via mobile viewport (390x844): login flow works for customer/owner/pending-owner/admin, correct role-based routing (customer→/home, owner→/dashboard, admin→/overview), pending-owner correctly sees 'Pending approval' screen, admin dashboard shows shops_pending/approved/rejected. No red screens, no deprecated Expo packages (expo-av / expo-barcode-scanner / expo-background-fetch not present).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/admin/users/{uid}/status", "issue": "new_status accepted as free-form query string (no Literal whitelist)."},
+      {"endpoint": "/api/owner/orders/{oid}/status", "issue": "Status machine is not forward-only – owner can move an order from 'completed' back to 'confirmed'. Consider validating transitions."},
+      {"endpoint": "/api/upload", "issue": "No file-size or content-type whitelist. Any authenticated user (customer/admin/owner) can upload. Consider size cap and MIME whitelist (image/*, application/pdf)."},
+      {"endpoint": "/api/files/{path}", "issue": "Endpoint is public (no auth). OK for shop images/business permit previews, but business permits arguably shouldn't be world-readable — consider signed URLs or admin/owner-only for permit paths."},
+      {"endpoint": "/api/orders/{oid}", "issue": "HTTPException(403) raised with no detail message on cross-user access."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/(customer)/home & /(customer)/marketplace", "issues": ["Newly-created TEST shops from the approval-flow tests are visible on the marketplace. This is test data pollution, not a product bug, but E1 may want a cleanup script or exclude TEST_ shops in dev."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/conftest.py",
+    "/app/backend/tests/test_elaya_backend.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "(Optional) Whitelist status values on /api/admin/users/{id}/status via Literal enum.",
+    "(Optional) Enforce forward-only order-status transitions in /api/owner/orders/{id}/status per delivery method's status_flow.",
+    "(Optional) Cap upload size and restrict MIME types in /api/upload; consider requiring auth on /api/files/{path} for business permit paths.",
+    "(Optional) Migrate FastAPI @app.on_event startup/shutdown to lifespan handlers (deprecation).",
+    "(Optional) Cleanup TEST_ shops seeded from earlier automated runs so customer marketplace only shows real seeded shops."
+  ],
+  "critical_code_review_comments": [
+    "server.py at 710 lines is at the acceptable ceiling — plan to split into routers (auth/owner/admin/orders/payments) if new features are added.",
+    "All Mongo reads correctly project {'_id': 0}. Insert paths pop '_id' before returning. Good.",
+    "RBAC via require() applied consistently; approved_shop() gate blocks non-approved owners from selling endpoints (verified via pending owner 403).",
+    "PayMongo flow is synchronous (blocking requests) — correctly offloaded via run_in_threadpool. Reconciliation happens on GET /orders/{id}/payment-status (polling), which is acceptable given no webhook secret.",
+    "Notification kind values are inconsistent strings ('order', 'payment', 'application', 'info') — consider a Literal enum.",
+    "storage.put_object retries once on 503; get_object does not — consider symmetric retry."
+  ],
+  "updated_files": [
+    "/app/backend/tests/conftest.py (rewrite: uses EXPO_PUBLIC_BACKEND_URL env, adds pending & owner2 fixtures)",
+    "/app/backend/tests/test_elaya_backend.py (rewrite: 29 tests covering new features)"
+  ],
+  "success_rate": {"backend": "100% (29/29)", "frontend": "smoke-tested — login + role routing + pending-approval screen verified; no deep UI regression suite this iteration"},
+  "seed_data_creation": "Startup seed() populates admin, customer, owner (Bloom & Petal, approved), owner2 (Rosa Del Sol, approved), pending (Petal Grove, pending) + 4 bouquets with multi-angle images. Tests additionally create TEST_ users/shops/orders via API; seeded 'Petal Grove' pending shop was NOT altered.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend public URL is in frontend/.env EXPO_PUBLIC_BACKEND_URL. Run: cd /app/backend/tests && EXPO_PUBLIC_BACKEND_URL=$(grep EXPO_PUBLIC_BACKEND_URL /app/frontend/.env | cut -d= -f2) pytest -v -n 0. Test file uses pytest module attributes (pytest.uploaded_url etc.) to share state, so keep -n 0 for deterministic ordering. Seeded PayMongo test key works; the GCash test will pytest.skip() if PayMongo returns non-200 (rate limit / network). Frontend has proper testIDs on email-input and password-input in sign-in; 'Sign In' button is rendered as a Text inside Pressable so use text-based click if you need to hit it.",
+  "rca_of_issue": "N/A — no production bugs found. Two initial test failures were caused by the test suite picking a bouquet whose shop_id belongs to a newly-created TEST owner (from the approve-flow test) rather than the seeded owner1/owner2 — fixed by filtering products to seeded owners' shop_ids before creating orders."
+}

@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { View, Text, StyleSheet, Pressable, TextInput, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator } from "react-native";
+import { View, Text, StyleSheet, Pressable, TextInput, ScrollView, ActivityIndicator } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { colors, spacing, radius } from "@/src/theme";
 import { useAuth, Role } from "@/src/auth";
 
@@ -14,30 +15,28 @@ export default function SignUp() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [shopName, setShopName] = useState("");
-  const [location, setLocation] = useState("Biñan, Laguna");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   const onSubmit = async () => {
-    if (!name || !email || !password) { setErr("Please fill required fields"); return; }
+    if (!name || !email || !password) { setErr("Please fill in all fields"); return; }
     setLoading(true); setErr(null);
     try {
-      const u = await register({ name, email: email.trim(), password, role, shop_name: shopName || undefined, location });
+      const u = await register({ name, email: email.trim(), password, role });
       if (u.role === "customer") router.replace("/(customer)/home");
-      else if (u.role === "flower_owner") router.replace("/(owner)/dashboard");
+      else if (u.role === "flower_owner") router.replace("/(owner)/application");
     } catch (e: any) { setErr(e.message || "Registration failed"); }
     finally { setLoading(false); }
   };
 
   return (
-    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.root}>
+    <View style={styles.root}>
       <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
         <Pressable testID="back-btn" onPress={() => router.back()} style={styles.backBtn}><Text style={{ fontSize: 22, color: colors.onSurface }}>←</Text></Pressable>
         <Text style={styles.headerTitle}>Create account</Text>
         <View style={{ width: 36 }} />
       </View>
-      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + spacing.xxl }]} keyboardShouldPersistTaps="handled">
+      <KeyboardAwareScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + spacing.xxl }]} keyboardShouldPersistTaps="handled" bottomOffset={20}>
         <Text style={styles.hero}>Join Elaya</Text>
         <Text style={styles.sub}>Bloom-to-door in Biñan, Laguna</Text>
 
@@ -51,19 +50,18 @@ export default function SignUp() {
           ))}
         </View>
 
+        {role === "flower_owner" && (
+          <View style={styles.noticeBox}>
+            <Text style={styles.noticeText}>🛈 After creating your account, you will submit a shop application for admin approval before you can sell.</Text>
+          </View>
+        )}
+
         <View style={styles.field}><Text style={styles.label}>Full Name</Text>
           <TextInput testID="name-input" value={name} onChangeText={setName} placeholder="Maria Santos" placeholderTextColor={colors.muted} style={styles.input} /></View>
         <View style={styles.field}><Text style={styles.label}>Email</Text>
           <TextInput testID="email-input" value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" placeholder="you@example.com" placeholderTextColor={colors.muted} style={styles.input} /></View>
         <View style={styles.field}><Text style={styles.label}>Password</Text>
           <TextInput testID="password-input" value={password} onChangeText={setPassword} secureTextEntry placeholder="At least 6 characters" placeholderTextColor={colors.muted} style={styles.input} /></View>
-
-        {role === "flower_owner" && <>
-          <View style={styles.field}><Text style={styles.label}>Shop Name</Text>
-            <TextInput testID="shop-name-input" value={shopName} onChangeText={setShopName} placeholder="e.g., Bloom & Petal" placeholderTextColor={colors.muted} style={styles.input} /></View>
-          <View style={styles.field}><Text style={styles.label}>Location</Text>
-            <TextInput testID="location-input" value={location} onChangeText={setLocation} placeholder="Biñan, Laguna" placeholderTextColor={colors.muted} style={styles.input} /></View>
-        </>}
 
         {err ? <Text testID="signup-error" style={styles.err}>{err}</Text> : null}
 
@@ -72,8 +70,8 @@ export default function SignUp() {
             {loading ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.ctaText}>Create Account</Text>}
           </LinearGradient>
         </Pressable>
-      </ScrollView>
-    </KeyboardAvoidingView>
+      </KeyboardAwareScrollView>
+    </View>
   );
 }
 
@@ -91,6 +89,8 @@ const styles = StyleSheet.create({
   roleCardActive: { backgroundColor: colors.brandPrimary, borderColor: colors.brandPrimary },
   roleTitle: { color: colors.onSurface, fontWeight: "700", fontSize: 15 },
   roleDesc: { color: colors.muted, fontSize: 12, marginTop: 2 },
+  noticeBox: { backgroundColor: colors.brandTertiary, borderRadius: radius.md, padding: spacing.md },
+  noticeText: { color: colors.onBrandTertiary, fontSize: 12, lineHeight: 18 },
   field: { gap: spacing.xs },
   input: { backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: 14, fontSize: 15, color: colors.onSurface },
   err: { color: colors.error, fontSize: 13 },

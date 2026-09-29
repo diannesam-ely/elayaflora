@@ -8,7 +8,7 @@ type AuthCtx = {
   user: User | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<User>;
-  register: (data: { name: string; email: string; password: string; role: Role; shop_name?: string; location?: string }) => Promise<User>;
+  register: (data: { name: string; email: string; password: string; role: Role }) => Promise<User>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
 };

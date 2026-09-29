@@ -2,17 +2,14 @@ import os
 import pytest
 import requests
 
-BASE_URL = "https://elaya-role-dispatch.preview.emergentagent.com"
+BASE_URL = os.environ.get("EXPO_PUBLIC_BACKEND_URL") or "https://7e8bd2f5-5617-4224-a622-6af7266e8f4f.preview.emergentagent.com"
+BASE_URL = BASE_URL.rstrip("/")
 
 ADMIN = {"email": "admin@elaya.ph", "password": "Admin123!"}
 OWNER = {"email": "owner@elaya.ph", "password": "Owner123!"}
 OWNER2 = {"email": "owner2@elaya.ph", "password": "Owner123!"}
+PENDING = {"email": "pending@elaya.ph", "password": "Owner123!"}
 CUSTOMER = {"email": "customer@elaya.ph", "password": "Customer123!"}
-
-
-@pytest.fixture(scope="session")
-def base_url():
-    return BASE_URL
 
 
 @pytest.fixture(scope="session")
@@ -24,7 +21,7 @@ def api_client():
 
 def _login(api_client, creds):
     r = api_client.post(f"{BASE_URL}/api/auth/login", json=creds, timeout=30)
-    assert r.status_code == 200, f"Login failed for {creds['email']}: {r.status_code} {r.text}"
+    assert r.status_code == 200, f"Login failed {creds['email']}: {r.status_code} {r.text}"
     return r.json()
 
 
@@ -41,6 +38,11 @@ def owner_auth(api_client):
 @pytest.fixture(scope="session")
 def owner2_auth(api_client):
     return _login(api_client, OWNER2)
+
+
+@pytest.fixture(scope="session")
+def pending_auth(api_client):
+    return _login(api_client, PENDING)
 
 
 @pytest.fixture(scope="session")

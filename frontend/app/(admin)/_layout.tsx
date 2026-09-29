@@ -14,11 +14,12 @@ export default function AdminLayout() {
       tabBarInactiveTintColor: colors.muted,
       tabBarStyle: { backgroundColor: colors.surface, borderTopColor: colors.divider, height: 64, paddingTop: 6, paddingBottom: 8 },
       tabBarLabelStyle: { fontSize: 11, fontWeight: "600" },
+      tabBarItemStyle: { alignSelf: "center" },
     }}>
       <Tabs.Screen name="overview" options={{ title: "Overview", tabBarIcon: ({ focused }) => <Icon label="📊" focused={focused} /> }} />
+      <Tabs.Screen name="shop-owners" options={{ title: "Shop Owners", tabBarIcon: ({ focused }) => <Icon label="🏪" focused={focused} /> }} />
+      <Tabs.Screen name="orders" options={{ title: "Orders", tabBarIcon: ({ focused }) => <Icon label="📦" focused={focused} /> }} />
       <Tabs.Screen name="users" options={{ title: "Users", tabBarIcon: ({ focused }) => <Icon label="👥" focused={focused} /> }} />
-      <Tabs.Screen name="shops" options={{ title: "Shops", tabBarIcon: ({ focused }) => <Icon label="🏪" focused={focused} /> }} />
-      <Tabs.Screen name="products" options={{ title: "Products", tabBarIcon: ({ focused }) => <Icon label="💐" focused={focused} /> }} />
     </Tabs>
   );
 }

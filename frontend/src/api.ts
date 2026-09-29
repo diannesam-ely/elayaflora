@@ -18,7 +18,18 @@ export const tokenStore = {
   },
 };
 
-const API = process.env.EXPO_PUBLIC_BACKEND_URL + "/api";
+export const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL || "";
+const API = BACKEND_URL + "/api";
+
+/** Resolve an image/file reference to a full URL.
+ * Backend upload paths come back as "/api/files/..." and need the host prefix.
+ * Remote http(s) URLs are returned as-is. */
+export function mediaUrl(ref?: string | null): string | undefined {
+  if (!ref) return undefined;
+  if (ref.startsWith("http://") || ref.startsWith("https://")) return ref;
+  if (ref.startsWith("/api/")) return BACKEND_URL + ref;
+  return ref;
+}
 
 export async function api(path: string, opts: RequestInit = {}): Promise<any> {
   const token = await tokenStore.get();

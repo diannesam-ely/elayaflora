@@ -1,107 +1,175 @@
-import { View, Text, StyleSheet, ScrollView, Pressable, Dimensions } from "react-native";
+import { View, Text, StyleSheet, ScrollView, Pressable, Dimensions, ActivityIndicator, RefreshControl } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
 import { colors, spacing, radius } from "@/src/theme";
-import { api } from "@/src/api";
-import { useAuth } from "@/src/auth";
+import { api, mediaUrl } from "@/src/api";
 
 const { width } = Dimensions.get("window");
 
 export default function OwnerDashboard() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { user } = useAuth();
-  const { data: shop } = useQuery({ queryKey: ["my-shop"], queryFn: () => api("/shops/mine") });
-  const { data: products = [] } = useQuery({ queryKey: ["my-products"], queryFn: () => api("/owner/products") });
-  const { data: orders = [] } = useQuery({ queryKey: ["owner-orders"], queryFn: () => api("/owner/orders"), refetchInterval: 8000 });
+  const { data: shop, isLoading, refetch, isRefetching } = useQuery({ queryKey: ["owner-application"], queryFn: () => api("/owner/application") });
+  const { data: products = [] } = useQuery({ queryKey: ["my-products"], queryFn: () => api("/owner/products"), enabled: shop?.status === "approved" });
+  const { data: orders = [] } = useQuery({ queryKey: ["owner-orders"], queryFn: () => api("/owner/orders"), refetchInterval: 8000, enabled: shop?.status === "approved" });
+  const { data: notifs = [] } = useQuery({ queryKey: ["owner-notifs"], queryFn: () => api("/notifications"), refetchInterval: 8000 });
 
+  if (isLoading) return <View style={styles.center}><ActivityIndicator color={colors.brandPrimary} /></View>;
+
+  // ---- Not approved states ----
+  if (!shop || shop.status === "none" || shop.status === "pending" || shop.status === "rejected") {
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.surface }}>
+        <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingTop: insets.top + spacing.xl, gap: spacing.lg }}
+          refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={colors.brandPrimary} />}>
+          <Text style={styles.brand}>Elaya for Shops</Text>
+          {(!shop || shop.status === "none") && (
+            <StatusCard testID="status-none" emoji="🌱" title="Start selling on Elaya"
+              body="Submit your shop application with your business permit and details. Our admin will review it before you can list bouquets."
+              cta="Submit Application" onPress={() => router.push("/(owner)/application")} />
+          )}
+          {shop?.status === "pending" && (
+            <StatusCard testID="status-pending" emoji="⏳" title="Pending approval" color={colors.warning}
+              body={`Your application for "${shop.shop_name}" is under review by the Elaya admin. You'll be notified once it's approved.`}
+              cta="View / Edit Application" onPress={() => router.push("/(owner)/application")} />
+          )}
+          {shop?.status === "rejected" && (
+            <StatusCard testID="status-rejected" emoji="❌" title="Application rejected" color={colors.error}
+              body={shop.reject_reason || "Your application did not meet the requirements."}
+              cta="Re-apply" onPress={() => router.push("/(owner)/application")} />
+          )}
+          {notifs.length > 0 && <Notifs notifs={notifs} />}
+        </ScrollView>
+      </View>
+    );
+  }
+
+  // ---- Approved dashboard ----
   const pending = orders.filter((o: any) => o.status === "pending").length;
   const completed = orders.filter((o: any) => o.status === "completed").length;
+  const paid = orders.filter((o: any) => o.payment_status === "paid").length;
   const revenue = orders.filter((o: any) => o.status === "completed").reduce((s: number, o: any) => s + o.total, 0);
-
-  const quicks = [
-    { icon: "🌸", label: "Add Flower", to: "/(owner)/add-flower" as const },
-    { icon: "💐", label: "Add Bouquet", to: "/(owner)/add-bouquet" as const },
-    { icon: "🎀", label: "Add Wrapping", to: "/(owner)/add-wrapping" as const },
-  ];
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.surface }}>
-      <ScrollView contentContainerStyle={{ paddingBottom: 100 }}>
+      <ScrollView contentContainerStyle={{ paddingBottom: spacing.xxl }}
+        refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={colors.brandPrimary} />}>
         <View style={[styles.header, { paddingTop: insets.top + spacing.md }]}>
-          <Image source={{ uri: shop?.image }} style={StyleSheet.absoluteFillObject} contentFit="cover" />
-          <LinearGradient colors={["rgba(43,30,34,0.6)", "rgba(43,30,34,0.9)"]} style={StyleSheet.absoluteFillObject} />
-          <View style={styles.badge}><Text style={styles.badgeText}>FLOWER SHOP OWNER</Text></View>
-          <Text style={styles.shopName}>{shop?.shop_name || "My Shop"}</Text>
+          <Image source={{ uri: mediaUrl(shop?.image) }} style={StyleSheet.absoluteFillObject} contentFit="cover" />
+          <LinearGradient colors={["rgba(43,30,34,0.5)", "rgba(43,30,34,0.9)"]} style={StyleSheet.absoluteFillObject} />
+          <View style={styles.approvedBadge}><Text style={styles.approvedText}>✓ APPROVED</Text></View>
+          <Text style={styles.shopName}>{shop?.shop_name}</Text>
           <Text style={styles.shopLoc}>📍 {shop?.location}</Text>
         </View>
 
         <View style={styles.metricGrid}>
-          <View style={styles.metric}>
-            <Text style={styles.metricNum}>{pending}</Text>
-            <Text style={styles.metricLabel}>Pending</Text>
-          </View>
-          <View style={styles.metric}>
-            <Text style={styles.metricNum}>{products.length}</Text>
-            <Text style={styles.metricLabel}>Products</Text>
-          </View>
-          <View style={styles.metric}>
-            <Text style={styles.metricNum}>{completed}</Text>
-            <Text style={styles.metricLabel}>Completed</Text>
-          </View>
-          <View style={styles.metric}>
-            <Text style={styles.metricNum}>₱{revenue.toLocaleString()}</Text>
-            <Text style={styles.metricLabel}>Revenue</Text>
-          </View>
+          <Metric num={pending} label="Pending" />
+          <Metric num={products.length} label="Products" />
+          <Metric num={paid} label="Paid" />
+          <Metric num={`₱${revenue.toLocaleString()}`} label="Revenue" />
         </View>
 
-        <Text style={styles.sectionTitle}>Quick Actions</Text>
         <View style={styles.quickRow}>
-          {quicks.map((q) => (
-            <Pressable key={q.label} testID={`quick-${q.label}`} onPress={() => router.push(q.to)} style={styles.quick}>
-              <Text style={{ fontSize: 28 }}>{q.icon}</Text>
-              <Text style={styles.quickLabel}>{q.label}</Text>
-            </Pressable>
-          ))}
+          <Pressable testID="quick-add" onPress={() => router.push("/(owner)/add-bouquet")} style={styles.quick}>
+            <Text style={{ fontSize: 26 }}>💐</Text><Text style={styles.quickLabel}>Add Bouquet</Text>
+          </Pressable>
+          <Pressable testID="quick-orders" onPress={() => router.push("/(owner)/orders")} style={styles.quick}>
+            <Text style={{ fontSize: 26 }}>📋</Text><Text style={styles.quickLabel}>Orders</Text>
+          </Pressable>
+          <Pressable testID="quick-shop" onPress={() => router.push("/(owner)/profile")} style={styles.quick}>
+            <Text style={{ fontSize: 26 }}>⚙️</Text><Text style={styles.quickLabel}>Shop Info</Text>
+          </Pressable>
         </View>
+
+        {notifs.length > 0 && <View style={{ paddingHorizontal: spacing.lg }}><Notifs notifs={notifs} /></View>}
 
         <Text style={styles.sectionTitle}>Recent Orders</Text>
         <View style={{ paddingHorizontal: spacing.lg, gap: spacing.sm }}>
-          {orders.slice(0, 5).map((o: any) => (
-            <View key={o.id} style={styles.orderRow}>
+          {orders.slice(0, 6).map((o: any) => (
+            <Pressable key={o.id} testID={`dash-order-${o.id}`} onPress={() => router.push(`/(owner)/order/${o.id}` as any)} style={styles.orderRow}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.orderNo}>{o.order_no}</Text>
-                <Text style={styles.orderCust}>{o.customer_name} · {o.items.length} items</Text>
+                <Text style={styles.orderCust}>{o.customer_name} · {o.items.length} items · {o.status.replace(/_/g, " ")}</Text>
               </View>
-              <Text style={styles.orderPrice}>₱{o.total.toLocaleString()}</Text>
-            </View>
+              <View style={{ alignItems: "flex-end" }}>
+                <Text style={styles.orderPrice}>₱{o.total.toLocaleString()}</Text>
+                <Text style={[styles.payTag, { color: o.payment_status === "paid" ? colors.success : colors.warning }]}>{o.payment_status === "paid" ? "PAID" : o.payment_method?.toUpperCase()}</Text>
+              </View>
+            </Pressable>
           ))}
-          {orders.length === 0 && <Text style={{ color: colors.muted, textAlign: "center" }}>No orders yet</Text>}
+          {orders.length === 0 && <Text style={{ color: colors.muted, textAlign: "center", marginTop: spacing.md }}>No orders yet today 💐</Text>}
         </View>
       </ScrollView>
     </View>
   );
 }
 
+function Metric({ num, label }: { num: any; label: string }) {
+  return <View style={styles.metric}><Text style={styles.metricNum}>{num}</Text><Text style={styles.metricLabel}>{label}</Text></View>;
+}
+
+function Notifs({ notifs }: { notifs: any[] }) {
+  return (
+    <View style={{ gap: spacing.sm }}>
+      <Text style={styles.notifHead}>Notifications</Text>
+      {notifs.slice(0, 4).map((n) => (
+        <View key={n.id} style={[styles.notif, !n.read && styles.notifUnread]} testID={`notif-${n.id}`}>
+          <Text style={styles.notifTitle}>{n.title}</Text>
+          <Text style={styles.notifBody}>{n.body}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+function StatusCard({ emoji, title, body, cta, onPress, color = colors.brandPrimary, testID }: any) {
+  return (
+    <View style={styles.statusCard} testID={testID}>
+      <Text style={{ fontSize: 52 }}>{emoji}</Text>
+      <Text style={[styles.statusTitle, { color }]}>{title}</Text>
+      <Text style={styles.statusBody}>{body}</Text>
+      <Pressable testID="status-cta" onPress={onPress} style={styles.statusCta}>
+        <LinearGradient colors={["#FF7EB3", "#FF758C"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.statusCtaBg}>
+          <Text style={styles.statusCtaText}>{cta}</Text>
+        </LinearGradient>
+      </Pressable>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
-  header: { height: 220, padding: spacing.lg, overflow: "hidden", justifyContent: "flex-end", gap: 6 },
-  badge: { alignSelf: "flex-start", backgroundColor: "rgba(255,255,255,0.2)", borderColor: "rgba(255,255,255,0.4)", borderWidth: 1, paddingHorizontal: spacing.sm, paddingVertical: 4, borderRadius: radius.pill },
-  badgeText: { color: "#FFFFFF", fontSize: 10, fontWeight: "700", letterSpacing: 0.8 },
-  shopName: { color: "#FFFFFF", fontSize: 32, fontWeight: "300", fontStyle: "italic" },
+  center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.surface },
+  brand: { fontSize: 30, fontWeight: "300", fontStyle: "italic", color: colors.onSurface },
+  statusCard: { backgroundColor: colors.surfaceSecondary, borderRadius: radius.lg, padding: spacing.xl, alignItems: "center", gap: spacing.sm },
+  statusTitle: { fontSize: 22, fontWeight: "700", textAlign: "center" },
+  statusBody: { color: colors.onSurfaceSecondary, fontSize: 14, lineHeight: 20, textAlign: "center" },
+  statusCta: { borderRadius: radius.pill, overflow: "hidden", marginTop: spacing.md, alignSelf: "stretch" },
+  statusCtaBg: { paddingVertical: 15, alignItems: "center" },
+  statusCtaText: { color: "#FFFFFF", fontWeight: "700", fontSize: 15 },
+  header: { height: 200, padding: spacing.lg, overflow: "hidden", justifyContent: "flex-end", gap: 6 },
+  approvedBadge: { alignSelf: "flex-start", backgroundColor: colors.success, paddingHorizontal: spacing.md, paddingVertical: 4, borderRadius: radius.pill },
+  approvedText: { color: "#FFFFFF", fontSize: 10, fontWeight: "800", letterSpacing: 0.8 },
+  shopName: { color: "#FFFFFF", fontSize: 30, fontWeight: "300", fontStyle: "italic" },
   shopLoc: { color: "rgba(255,255,255,0.9)", fontSize: 13 },
   metricGrid: { flexDirection: "row", flexWrap: "wrap", padding: spacing.lg, gap: spacing.md },
   metric: { width: (width - spacing.lg * 2 - spacing.md) / 2, backgroundColor: colors.surfaceSecondary, padding: spacing.md, borderRadius: radius.md, gap: 4 },
-  metricNum: { fontSize: 24, fontWeight: "700", color: colors.brandPrimary },
+  metricNum: { fontSize: 22, fontWeight: "700", color: colors.brandPrimary },
   metricLabel: { fontSize: 12, color: colors.muted, fontWeight: "600" },
-  sectionTitle: { fontSize: 18, fontWeight: "700", color: colors.onSurface, paddingHorizontal: spacing.lg, marginTop: spacing.md, marginBottom: spacing.sm },
   quickRow: { flexDirection: "row", paddingHorizontal: spacing.lg, gap: spacing.sm },
   quick: { flex: 1, padding: spacing.md, alignItems: "center", backgroundColor: colors.brandTertiary, borderRadius: radius.md, gap: 6 },
   quickLabel: { color: colors.onBrandTertiary, fontSize: 12, fontWeight: "700" },
+  sectionTitle: { fontSize: 18, fontWeight: "700", color: colors.onSurface, paddingHorizontal: spacing.lg, marginTop: spacing.lg, marginBottom: spacing.sm },
   orderRow: { flexDirection: "row", alignItems: "center", padding: spacing.md, backgroundColor: colors.surfaceSecondary, borderRadius: radius.md },
   orderNo: { fontWeight: "700", color: colors.onSurface, fontSize: 14 },
   orderCust: { color: colors.muted, fontSize: 12, marginTop: 2 },
   orderPrice: { color: colors.brandPrimary, fontWeight: "700", fontSize: 15 },
+  payTag: { fontSize: 10, fontWeight: "800", marginTop: 2 },
+  notifHead: { fontSize: 16, fontWeight: "700", color: colors.onSurface, marginTop: spacing.md },
+  notif: { backgroundColor: colors.surfaceSecondary, borderRadius: radius.md, padding: spacing.md },
+  notifUnread: { borderLeftWidth: 3, borderLeftColor: colors.brandPrimary },
+  notifTitle: { fontWeight: "700", color: colors.onSurface, fontSize: 13 },
+  notifBody: { color: colors.muted, fontSize: 12, marginTop: 2 },
 });

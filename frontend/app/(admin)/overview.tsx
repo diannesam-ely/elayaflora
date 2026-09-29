@@ -14,17 +14,12 @@ export default function AdminOverview() {
   const router = useRouter();
   const { user, logout } = useAuth();
   const { data: o } = useQuery({ queryKey: ["admin-overview"], queryFn: () => api("/admin/overview"), refetchInterval: 8000 });
-  const { data: orders = [] } = useQuery({ queryKey: ["admin-orders"], queryFn: () => api("/admin/orders") });
 
   const cards = [
     { label: "Customers", value: o?.total_customers ?? 0, color: "#FF758C" },
     { label: "Shop Owners", value: o?.total_owners ?? 0, color: "#7B3245" },
-    { label: "Shops", value: o?.total_shops ?? 0, color: "#4C7355" },
-    { label: "Products", value: o?.total_products ?? 0, color: "#B87B41" },
     { label: "Orders", value: o?.total_orders ?? 0, color: "#607487" },
-    { label: "Pending", value: o?.pending_orders ?? 0, color: "#B87B41" },
-    { label: "Completed", value: o?.completed_orders ?? 0, color: "#4C7355" },
-    { label: "Revenue", value: `₱${(o?.revenue ?? 0).toLocaleString()}`, color: "#FF758C" },
+    { label: "Revenue", value: `₱${(o?.revenue ?? 0).toLocaleString()}`, color: "#4C7355" },
   ];
 
   return (
@@ -46,24 +41,27 @@ export default function AdminOverview() {
           ))}
         </View>
 
-        <Text style={styles.section}>Product Breakdown</Text>
+        <Pressable testID="manage-owners" onPress={() => router.push("/(admin)/shop-owners")} style={styles.ownerBanner}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.ownerTitle}>Shop Owner Applications</Text>
+            <Text style={styles.ownerSub}>{o?.shops_pending ?? 0} awaiting your review</Text>
+          </View>
+          <Text style={{ fontSize: 22 }}>→</Text>
+        </Pressable>
+
+        <Text style={styles.section}>Shop Owner Status</Text>
         <View style={styles.breakdown}>
-          <View style={styles.brRow}><Text style={styles.brLabel}>🌸 Flowers</Text><Text style={styles.brVal}>{o?.total_flowers ?? 0}</Text></View>
-          <View style={styles.brRow}><Text style={styles.brLabel}>💐 Bouquets</Text><Text style={styles.brVal}>{o?.total_bouquets ?? 0}</Text></View>
-          <View style={styles.brRow}><Text style={styles.brLabel}>🎀 Wrappings</Text><Text style={styles.brVal}>{o?.total_wrappings ?? 0}</Text></View>
+          <View style={styles.brRow}><Text style={styles.brLabel}>⏳ Pending</Text><Text style={[styles.brVal, { color: colors.warning }]}>{o?.shops_pending ?? 0}</Text></View>
+          <View style={styles.brRow}><Text style={styles.brLabel}>✅ Approved</Text><Text style={[styles.brVal, { color: colors.success }]}>{o?.shops_approved ?? 0}</Text></View>
+          <View style={styles.brRow}><Text style={styles.brLabel}>❌ Rejected</Text><Text style={[styles.brVal, { color: colors.error }]}>{o?.shops_rejected ?? 0}</Text></View>
+          <View style={styles.brRow}><Text style={styles.brLabel}>🏪 Total shops</Text><Text style={styles.brVal}>{o?.total_shops ?? 0}</Text></View>
         </View>
 
-        <Text style={styles.section}>Recent Orders</Text>
-        <View style={{ gap: spacing.sm }}>
-          {orders.slice(0, 5).map((ord: any) => (
-            <View key={ord.id} style={styles.orderRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.orderNo}>{ord.order_no}</Text>
-                <Text style={styles.orderMeta}>{ord.customer_name} · {ord.status}</Text>
-              </View>
-              <Text style={styles.orderPrice}>₱{ord.total.toLocaleString()}</Text>
-            </View>
-          ))}
+        <Text style={styles.section}>Orders</Text>
+        <View style={styles.breakdown}>
+          <View style={styles.brRow}><Text style={styles.brLabel}>💐 Active products</Text><Text style={styles.brVal}>{o?.total_products ?? 0}</Text></View>
+          <View style={styles.brRow}><Text style={styles.brLabel}>⏳ Pending orders</Text><Text style={styles.brVal}>{o?.pending_orders ?? 0}</Text></View>
+          <View style={styles.brRow}><Text style={styles.brLabel}>✅ Completed orders</Text><Text style={styles.brVal}>{o?.completed_orders ?? 0}</Text></View>
         </View>
 
         <Pressable testID="logout-btn" onPress={async () => { await logout(); router.replace("/"); }} style={styles.logoutBtn}>
@@ -84,16 +82,15 @@ const styles = StyleSheet.create({
   card: { width: (width - spacing.lg * 2 - spacing.md) / 2, padding: spacing.md, backgroundColor: colors.surfaceSecondary, borderRadius: radius.md, overflow: "hidden" },
   cardBar: { position: "absolute", left: 0, top: 0, bottom: 0, width: 4 },
   cardLabel: { color: colors.muted, fontSize: 12, fontWeight: "600" },
-  cardValue: { color: colors.onSurface, fontSize: 24, fontWeight: "700", marginTop: 4 },
+  cardValue: { color: colors.onSurface, fontSize: 22, fontWeight: "700", marginTop: 4 },
+  ownerBanner: { flexDirection: "row", alignItems: "center", padding: spacing.md, backgroundColor: colors.brandTertiary, borderRadius: radius.md },
+  ownerTitle: { fontWeight: "700", color: colors.onBrandTertiary, fontSize: 15 },
+  ownerSub: { color: colors.onBrandTertiary, fontSize: 12, marginTop: 2, opacity: 0.8 },
   section: { fontSize: 15, fontWeight: "700", color: colors.onSurface, marginTop: spacing.sm },
   breakdown: { backgroundColor: colors.surfaceSecondary, borderRadius: radius.md, padding: spacing.md, gap: 6 },
   brRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 6 },
   brLabel: { color: colors.onSurface, fontSize: 14 },
   brVal: { color: colors.brandPrimary, fontWeight: "700", fontSize: 15 },
-  orderRow: { flexDirection: "row", padding: spacing.md, backgroundColor: colors.surfaceSecondary, borderRadius: radius.md, alignItems: "center" },
-  orderNo: { fontWeight: "700", color: colors.onSurface, fontSize: 14 },
-  orderMeta: { color: colors.muted, fontSize: 12, marginTop: 2 },
-  orderPrice: { color: colors.brandPrimary, fontWeight: "700", fontSize: 14 },
   logoutBtn: { marginTop: spacing.lg, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.error, alignItems: "center" },
   logoutText: { color: colors.error, fontWeight: "700" },
 });

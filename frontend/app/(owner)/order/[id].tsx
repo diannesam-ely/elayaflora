@@ -1,0 +1,144 @@
+import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator } from "react-native";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import * as Location from "expo-location";
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { colors, spacing, radius } from "@/src/theme";
+import { api } from "@/src/api";
+import MapView from "@/src/components/LeafletMap";
+
+const LABEL: Record<string, string> = {
+  pending: "Pending", confirmed: "Confirmed", preparing: "Preparing",
+  ready_for_delivery: "Ready to Deliver", ready_for_pickup: "Ready for Pickup",
+  handed_to_courier: "Handed to Courier", out_for_delivery: "Out for Delivery", completed: "Completed",
+};
+
+export default function OwnerOrderDetail() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const insets = useSafeAreaInsets();
+  const router = useRouter();
+  const qc = useQueryClient();
+  const [locBusy, setLocBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const { data: o, isLoading } = useQuery({ queryKey: ["owner-order", id], queryFn: () => api(`/orders/${id}`), enabled: !!id, refetchInterval: 6000 });
+
+  const statusMut = useMutation({
+    mutationFn: (status: string) => api(`/owner/orders/${id}/status`, { method: "PATCH", body: JSON.stringify({ status }) }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["owner-order", id] }); qc.invalidateQueries({ queryKey: ["owner-orders"] }); },
+  });
+  const riderMut = useMutation({
+    mutationFn: (c: { lat: number; lng: number }) => api(`/owner/orders/${id}/rider`, { method: "PATCH", body: JSON.stringify(c) }),
+    onSuccess: () => { setMsg("Location shared with customer ✓"); qc.invalidateQueries({ queryKey: ["owner-order", id] }); },
+  });
+
+  if (isLoading || !o) return <View style={styles.center}><ActivityIndicator color={colors.brandPrimary} /></View>;
+
+  const flow: string[] = o.status_flow || ["pending", "confirmed", "preparing", "ready_for_delivery", "out_for_delivery", "completed"];
+  const idx = flow.indexOf(o.status);
+  const next = idx >= 0 && idx < flow.length - 1 ? flow[idx + 1] : null;
+
+  const shareLocation = async () => {
+    setMsg(null);
+    const perm = await Location.requestForegroundPermissionsAsync();
+    if (!perm.granted) { setMsg("Location permission needed to share your position."); return; }
+    setLocBusy(true);
+    try { const pos = await Location.getCurrentPositionAsync({}); riderMut.mutate({ lat: pos.coords.latitude, lng: pos.coords.longitude }); }
+    catch { setMsg("Could not get location"); } finally { setLocBusy(false); }
+  };
+
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.surface }}>
+      <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
+        <Pressable testID="back-btn" onPress={() => router.back()}><Text style={styles.back}>←</Text></Pressable>
+        <Text style={styles.title}>{o.order_no}</Text>
+        <View style={{ width: 24 }} />
+      </View>
+      <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.lg, paddingBottom: insets.bottom + spacing.xxl }}>
+        <View style={styles.box}>
+          <Row k="Customer" v={o.customer_name} />
+          <Row k="Delivery" v={{ in_house: "In-House Delivery", third_party: "Third-Party", pickup: "Pick-Up" }[o.delivery_method as string] || o.delivery_method} />
+          <Row k="Payment" v={o.payment_status === "paid" ? `Paid (${o.payment_ref || "GCash"})` : o.payment_method === "gcash" ? "GCash · unpaid" : "Cash on Delivery"} />
+          {o.delivery_method !== "pickup" && <Row k="Address" v={o.delivery_address} />}
+          {o.notes ? <Row k="Notes" v={o.notes} /> : null}
+        </View>
+
+        <View style={styles.box}>
+          <Text style={styles.section}>Items</Text>
+          {o.items.map((it: any, i: number) => (
+            <View key={i} style={styles.itemRow}>
+              <Text style={styles.itemName} numberOfLines={1}>{it.name} × {it.quantity}</Text>
+              <Text style={styles.itemPrice}>₱{(it.unit_price * it.quantity).toLocaleString()}</Text>
+            </View>
+          ))}
+          <View style={[styles.itemRow, { borderTopWidth: 1, borderTopColor: colors.divider, paddingTop: spacing.sm, marginTop: spacing.xs }]}>
+            <Text style={styles.totalLabel}>Total</Text><Text style={styles.totalPrice}>₱{o.total.toLocaleString()}</Text>
+          </View>
+        </View>
+
+        <View>
+          <Text style={styles.section}>Order Progress</Text>
+          <View style={styles.stepper}>
+            {flow.map((s, i) => (
+              <View key={s} style={styles.step}>
+                <View style={[styles.dot, i <= idx && { backgroundColor: colors.brandPrimary }]}>
+                  {i <= idx && <Text style={{ color: "#FFF", fontSize: 10, fontWeight: "800" }}>✓</Text>}
+                </View>
+                <Text style={[styles.stepLabel, i === idx && { color: colors.brandPrimary, fontWeight: "700" }]}>{LABEL[s] || s}</Text>
+              </View>
+            ))}
+          </View>
+          {next && (
+            <Pressable testID="advance-btn" onPress={() => statusMut.mutate(next)} disabled={statusMut.isPending} style={styles.advBtn}>
+              <Text style={styles.advText}>{statusMut.isPending ? "Updating..." : `Mark as ${LABEL[next]} →`}</Text>
+            </Pressable>
+          )}
+        </View>
+
+        {o.delivery_method === "in_house" && (
+          <View>
+            <Text style={styles.section}>In-House Delivery Tracking</Text>
+            <View style={{ height: 180, borderRadius: radius.md, overflow: "hidden" }}>
+              <MapView markers={[{ lat: o.rider_lat, lng: o.rider_lng, emoji: "🛵", label: "You" }, { lat: o.delivery_lat, lng: o.delivery_lng, emoji: "📍", label: "Customer" }]}
+                line={{ from: { lat: o.rider_lat, lng: o.rider_lng }, to: { lat: o.delivery_lat, lng: o.delivery_lng } }} />
+            </View>
+            <Pressable testID="share-loc-btn" onPress={shareLocation} disabled={locBusy || riderMut.isPending} style={styles.locBtn}>
+              <Text style={styles.locText}>{locBusy || riderMut.isPending ? "Sharing..." : "📍 Share my live location"}</Text>
+            </Pressable>
+            {msg ? <Text style={styles.msg}>{msg}</Text> : null}
+          </View>
+        )}
+      </ScrollView>
+    </View>
+  );
+}
+
+function Row({ k, v }: { k: string; v: any }) {
+  return <View style={styles.kv}><Text style={styles.k}>{k}</Text><Text style={styles.v}>{String(v)}</Text></View>;
+}
+
+const styles = StyleSheet.create({
+  center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.surface },
+  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: spacing.lg, paddingBottom: spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.divider },
+  back: { fontSize: 22, color: colors.onSurface },
+  title: { fontSize: 18, fontWeight: "700", color: colors.onSurface },
+  box: { backgroundColor: colors.surfaceSecondary, borderRadius: radius.md, padding: spacing.md, gap: 6 },
+  kv: { flexDirection: "row", justifyContent: "space-between", gap: spacing.md },
+  k: { color: colors.muted, fontSize: 13 },
+  v: { color: colors.onSurface, fontSize: 13, fontWeight: "600", flexShrink: 1, textAlign: "right" },
+  section: { fontSize: 15, fontWeight: "700", color: colors.onSurface, marginBottom: spacing.sm },
+  itemRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 3 },
+  itemName: { flex: 1, color: colors.onSurface, fontSize: 13 },
+  itemPrice: { color: colors.onSurface, fontWeight: "600", fontSize: 13 },
+  totalLabel: { fontSize: 15, fontWeight: "700", color: colors.onSurface },
+  totalPrice: { fontSize: 16, fontWeight: "700", color: colors.brandPrimary },
+  stepper: { gap: spacing.xs, marginBottom: spacing.md },
+  step: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: 4 },
+  dot: { width: 22, height: 22, borderRadius: 11, backgroundColor: colors.surfaceTertiary, alignItems: "center", justifyContent: "center" },
+  stepLabel: { color: colors.onSurfaceSecondary, fontSize: 14 },
+  advBtn: { backgroundColor: colors.brandPrimary, paddingVertical: 14, borderRadius: radius.pill, alignItems: "center" },
+  advText: { color: colors.onBrandPrimary, fontWeight: "700", fontSize: 14 },
+  locBtn: { marginTop: spacing.md, backgroundColor: colors.brandTertiary, paddingVertical: 12, borderRadius: radius.pill, alignItems: "center" },
+  locText: { color: colors.onBrandTertiary, fontWeight: "700", fontSize: 13 },
+  msg: { color: colors.success, fontSize: 12, marginTop: spacing.xs, textAlign: "center" },
+});
