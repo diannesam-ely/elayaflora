@@ -5,10 +5,10 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
 import { colors, spacing, radius } from "@/src/theme";
 import { api, mediaUrl } from "@/src/api";
+import Stars from "@/src/components/Stars";
 
 const { width } = Dimensions.get("window");
 const CARD_W = (width - spacing.lg * 2 - spacing.md) / 2;
-
 export default function Marketplace() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -37,6 +37,7 @@ export default function Marketplace() {
             <View style={{ padding: spacing.sm, gap: 2 }}>
               <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
               <Text style={styles.price}>₱{item.price.toLocaleString()}</Text>
+              {(item.rating_count > 0) && <Stars value={item.rating_avg || 0} size={12} count={item.rating_count} />}
             </View>
           </Pressable>
         )}

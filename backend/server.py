@@ -558,6 +558,67 @@ async def read_all(u=Depends(get_current_user)):
     await db.notifications.update_many({"user_id": u["id"]}, {"$set": {"read": True}})
     return {"ok": True}
 
+# ---------- Reviews & Ratings ----------
+class ReviewIn(BaseModel):
+    product_id: str
+    rating: int = Field(ge=1, le=5)
+    comment: str = ""
+
+async def _recompute_product_rating(pid: str):
+    revs = await db.reviews.find({"product_id": pid}, {"_id": 0, "rating": 1}).to_list(10000)
+    count = len(revs)
+    avg = round(sum(r["rating"] for r in revs) / count, 2) if count else 0
+    await db.products.update_one({"id": pid}, {"$set": {"rating_avg": avg, "rating_count": count}})
+
+async def _recompute_shop_rating(sid: str):
+    revs = await db.reviews.find({"shop_id": sid}, {"_id": 0, "rating": 1}).to_list(10000)
+    count = len(revs)
+    avg = round(sum(r["rating"] for r in revs) / count, 2) if count else 0
+    await db.shops.update_one({"id": sid}, {"$set": {"rating_avg": avg, "rating_count": count}})
+
+async def _has_ordered(user_id: str, product_id: str) -> bool:
+    o = await db.orders.find_one({"customer_id": user_id, "items.product_id": product_id})
+    return o is not None
+
+@api.get("/products/{pid}/reviews")
+async def product_reviews(pid: str):
+    return await db.reviews.find({"product_id": pid}, {"_id": 0}).sort("created_at", -1).to_list(500)
+
+@api.get("/shops/{sid}/reviews")
+async def shop_reviews(sid: str):
+    return await db.reviews.find({"shop_id": sid}, {"_id": 0}).sort("created_at", -1).to_list(500)
+
+@api.get("/reviews/eligibility")
+async def review_eligibility(product_id: str, u=Depends(require("customer"))):
+    ordered = await _has_ordered(u["id"], product_id)
+    existing = await db.reviews.find_one({"user_id": u["id"], "product_id": product_id}, {"_id": 0})
+    return {"can_review": ordered, "already_reviewed": bool(existing),
+            "my_review": existing}
+
+@api.post("/reviews")
+async def create_review(data: ReviewIn, u=Depends(require("customer"))):
+    p = await db.products.find_one({"id": data.product_id}, {"_id": 0})
+    if not p:
+        raise HTTPException(404, "Product not found")
+    if not await _has_ordered(u["id"], data.product_id):
+        raise HTTPException(403, "You can only review bouquets you have ordered.")
+    sid = p["shop_id"]
+    doc = {"user_id": u["id"], "user_name": u["name"], "product_id": data.product_id,
+           "product_name": p["name"], "shop_id": sid, "rating": data.rating,
+           "comment": data.comment.strip(), "created_at": now_iso()}
+    existing = await db.reviews.find_one({"user_id": u["id"], "product_id": data.product_id})
+    if existing:
+        await db.reviews.update_one({"id": existing["id"]}, {"$set": {**doc, "updated_at": now_iso()}})
+    else:
+        doc["id"] = str(uuid.uuid4())
+        await db.reviews.insert_one(doc)
+        owner = await db.shops.find_one({"id": sid}, {"_id": 0})
+        if owner:
+            await notify(owner["owner_id"], "New review ⭐", f"{u['name']} rated \"{p['name']}\" {data.rating}/5.", kind="review")
+    await _recompute_product_rating(data.product_id)
+    await _recompute_shop_rating(sid)
+    return {"ok": True}
+
 # ---------- Favorites ----------
 @api.post("/favorites/{pid}")
 async def add_fav(pid: str, u=Depends(require("customer"))):

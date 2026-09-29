@@ -24,11 +24,15 @@ Design and develop ELAYA, a mobile flower marketplace for Biñan, Laguna, with a
 5. Shop Owner Registration + Admin Approval (pending/approved/rejected, re-apply) — DONE
 6. Business permit file upload — DONE
 
-## Implemented (2026-06)
-- Recreated missing `.env` files; fixed storage init (lazy key read); removed 3D studio & flower/wrapping flows.
+## Implemented (2026-06)- Recreated missing `.env` files; fixed storage init (lazy key read); removed 3D studio & flower/wrapping flows.
 - Backend: owner application + approval endpoints, object-storage upload/download, products with `images[]`, shops with lat/lng + distance, orders with per-method `status_flow`, rider location, PayMongo GCash + COD, notifications, admin overview/shop-owners/orders.
 - Frontend: sign-up (basic owner account → application), owner application form (permit + GPS pin), owner dashboard with approval gating, add-bouquet multi-photo uploader, products/orders/order-detail (status advance + live location), owner profile (shop info + delivery methods). Customer home (360 highlight), shops map (GPS), shop detail, product 360 viewer, checkout (delivery method + GCash/COD), tracking (map + status + pay). Admin overview, shop-owner management (approve/reject + permit), all-orders, users.
 - Testing: 29/29 backend tests pass; frontend smoke passes; no critical bugs.
+
+## Ratings & Reviews (2026-06)
+- Verified-buyer only: a customer can review a bouquet only if they have an order containing it (`POST /reviews` returns 403 otherwise). 1–5 stars + comment; one review per (user, product), editable.
+- Endpoints: `GET /products/{id}/reviews`, `GET /shops/{id}/reviews`, `GET /reviews/eligibility`, `POST /reviews`. Aggregates `rating_avg`/`rating_count` stored on product & shop and recomputed on each review; owner gets a "New review" notification.
+- UI: star summary + review list + gated "Write/Edit review" composer on product detail; shop rating + reviews on shop detail; star badges on marketplace cards. Reusable `src/components/Stars.tsx`.
 
 ## Seeded Accounts
 See `/app/memory/test_credentials.md`.

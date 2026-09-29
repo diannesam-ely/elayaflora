@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator } from "react-native";
+import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, TextInput, Modal } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -8,6 +8,7 @@ import { colors, spacing, radius } from "@/src/theme";
 import { api } from "@/src/api";
 import { useCart } from "@/src/cart";
 import Rotate360 from "@/src/components/Rotate360";
+import Stars from "@/src/components/Stars";
 
 const METHOD: Record<string, string> = { in_house: "In-House Delivery", third_party: "Third-Party", pickup: "Pick-Up" };
 
@@ -20,6 +21,22 @@ export default function ProductDetail() {
   const { data: p, isLoading } = useQuery({ queryKey: ["product", id], queryFn: () => api(`/products/${id}`), enabled: !!id });
   const [qty, setQty] = useState(1);
   const [fav, setFav] = useState(false);
+  const [showReview, setShowReview] = useState(false);
+  const [rating, setRating] = useState(5);
+  const [comment, setComment] = useState("");
+
+  const { data: reviews = [] } = useQuery({ queryKey: ["reviews", id], queryFn: () => api(`/products/${id}/reviews`), enabled: !!id });
+  const { data: elig } = useQuery({ queryKey: ["review-elig", id], queryFn: () => api(`/reviews/eligibility?product_id=${id}`), enabled: !!id });
+
+  const reviewMut = useMutation({
+    mutationFn: () => api("/reviews", { method: "POST", body: JSON.stringify({ product_id: id, rating, comment }) }),
+    onSuccess: () => {
+      setShowReview(false); setComment("");
+      qc.invalidateQueries({ queryKey: ["reviews", id] });
+      qc.invalidateQueries({ queryKey: ["review-elig", id] });
+      qc.invalidateQueries({ queryKey: ["product", id] });
+    },
+  });
 
   const favMut = useMutation({
     mutationFn: () => fav ? api(`/favorites/${id}`, { method: "DELETE" }) : api(`/favorites/${id}`, { method: "POST" }),
@@ -49,6 +66,11 @@ export default function ProductDetail() {
           <Text style={styles.type}>READY-MADE BOUQUET{p.shop ? ` · ${p.shop.shop_name}` : ""}</Text>
           <Text style={styles.name}>{p.name}</Text>
           <Text style={styles.price}>₱{p.price.toLocaleString()}</Text>
+          {(p.rating_count > 0) && (
+            <View style={{ flexDirection: "row", alignItems: "center", marginTop: 2 }}>
+              <Stars value={p.rating_avg || 0} size={15} count={p.rating_count} />
+            </View>
+          )}
           <Text style={styles.desc}>{p.description || "Handcrafted with love in Biñan, Laguna."}</Text>
 
           {p.flowers_included && p.flowers_included.length > 0 && (
@@ -82,8 +104,48 @@ export default function ProductDetail() {
               <Text style={{ marginLeft: spacing.md, color: colors.muted, fontSize: 12 }}>Stock: {p.stock}</Text>
             </View>
           </View>
+
+          {/* Reviews */}
+          <View style={styles.reviewsHead}>
+            <Text style={styles.reviewsTitle}>Reviews {p.rating_count ? `· ${p.rating_avg?.toFixed(1)}★ (${p.rating_count})` : ""}</Text>
+            {elig?.can_review && (
+              <Pressable testID="write-review-btn" onPress={() => { setRating(elig?.my_review?.rating || 5); setComment(elig?.my_review?.comment || ""); setShowReview(true); }}>
+                <Text style={styles.writeLink}>{elig?.already_reviewed ? "Edit review" : "Write a review"}</Text>
+              </Pressable>
+            )}
+          </View>
+          {reviews.length === 0 ? (
+            <Text style={styles.noReviews}>No reviews yet{elig && !elig.can_review ? " · order this bouquet to review it" : ""}.</Text>
+          ) : (
+            reviews.map((r: any, i: number) => (
+              <View key={i} style={styles.reviewCard} testID={`review-${i}`}>
+                <View style={styles.reviewTop}>
+                  <Text style={styles.reviewName}>{r.user_name}</Text>
+                  <Stars value={r.rating} size={13} />
+                </View>
+                {r.comment ? <Text style={styles.reviewComment}>{r.comment}</Text> : null}
+              </View>
+            ))
+          )}
         </View>
       </ScrollView>
+
+      <Modal visible={showReview} transparent animationType="slide" onRequestClose={() => setShowReview(false)}>
+        <Pressable style={styles.modalBg} onPress={() => setShowReview(false)} />
+        <View style={[styles.modalSheet, { paddingBottom: insets.bottom + spacing.lg }]}>
+          <View style={styles.handle} />
+          <Text style={styles.modalTitle}>Rate this bouquet</Text>
+          <View style={{ alignItems: "center", marginVertical: spacing.md }}>
+            <Stars value={rating} size={38} onChange={setRating} />
+          </View>
+          <TextInput testID="review-comment" value={comment} onChangeText={setComment} multiline placeholder="Share your experience..." placeholderTextColor={colors.muted} style={styles.reviewInput} />
+          <Pressable testID="submit-review-btn" onPress={() => reviewMut.mutate()} disabled={reviewMut.isPending} style={styles.submitBtn}>
+            <LinearGradient colors={["#FF7EB3", "#FF758C"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.submitBg}>
+              {reviewMut.isPending ? <ActivityIndicator color="#FFF" /> : <Text style={styles.submitText}>Submit Review</Text>}
+            </LinearGradient>
+          </Pressable>
+        </View>
+      </Modal>
       <View style={[styles.footer, { paddingBottom: insets.bottom + spacing.sm }]}>
         <Pressable testID="add-cart-btn" onPress={addToCart} style={styles.cta}>
           <LinearGradient colors={["#FF7EB3", "#FF758C"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.ctaBg}>
@@ -117,4 +179,20 @@ const styles = StyleSheet.create({
   cta: { borderRadius: radius.pill, overflow: "hidden" },
   ctaBg: { paddingVertical: 14, alignItems: "center" },
   ctaText: { color: "#FFFFFF", fontWeight: "700", fontSize: 15 },
+  reviewsHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: spacing.lg },
+  reviewsTitle: { fontSize: 16, fontWeight: "700", color: colors.onSurface },
+  writeLink: { color: colors.brandPrimary, fontWeight: "700", fontSize: 13 },
+  noReviews: { color: colors.muted, fontSize: 13, marginTop: spacing.sm },
+  reviewCard: { backgroundColor: colors.surfaceSecondary, borderRadius: radius.md, padding: spacing.md, marginTop: spacing.sm },
+  reviewTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  reviewName: { fontWeight: "700", color: colors.onSurface, fontSize: 13 },
+  reviewComment: { color: colors.onSurfaceSecondary, fontSize: 13, marginTop: 4, lineHeight: 18 },
+  modalBg: { flex: 1, backgroundColor: "rgba(43,30,34,0.5)" },
+  modalSheet: { backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: spacing.lg },
+  handle: { alignSelf: "center", width: 40, height: 4, borderRadius: 2, backgroundColor: colors.border, marginBottom: spacing.md },
+  modalTitle: { fontSize: 18, fontWeight: "700", color: colors.onSurface, textAlign: "center" },
+  reviewInput: { backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.md, minHeight: 90, color: colors.onSurface, fontSize: 14, textAlignVertical: "top" },
+  submitBtn: { borderRadius: radius.pill, overflow: "hidden", marginTop: spacing.md },
+  submitBg: { paddingVertical: 14, alignItems: "center" },
+  submitText: { color: "#FFFFFF", fontWeight: "700", fontSize: 15 },
 });
