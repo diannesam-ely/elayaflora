@@ -4,8 +4,8 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors, spacing, radius } from "@/src/theme";
+import { mediaUrl } from "@/src/api";
 import { useCart } from "@/src/cart";
-
 export default function Cart() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -31,7 +31,7 @@ export default function Cart() {
           <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md, paddingBottom: 160 }}>
             {items.map((it) => (
               <View key={it.product_id} style={styles.row}>
-                <Image source={{ uri: it.image }} style={styles.img} contentFit="cover" />
+                <Image source={{ uri: mediaUrl(it.image) }} style={styles.img} contentFit="cover" />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.name} numberOfLines={2}>{it.name}</Text>
                   {it.customization && <Text style={styles.custom}>Custom · {it.customization.flower}, {it.customization.wrap}</Text>}

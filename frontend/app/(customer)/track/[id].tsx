@@ -7,6 +7,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { colors, spacing, radius } from "@/src/theme";
 import { api } from "@/src/api";
 import MapView from "@/src/components/LeafletMap";
+import LiveTrackMap from "@/src/components/LiveTrackMap";
 
 const LABELS: Record<string, string> = {
   pending: "Order Placed", confirmed: "Confirmed", preparing: "Preparing",
@@ -23,6 +24,7 @@ export default function Track() {
   const [paying, setPaying] = useState(false);
 
   const { data: o, isLoading } = useQuery({ queryKey: ["order", id], queryFn: () => api(`/orders/${id}`), enabled: !!id, refetchInterval: 6000 });
+  const { data: track } = useQuery({ queryKey: ["track", id], queryFn: () => api(`/orders/${id}/tracking`), enabled: !!id, refetchInterval: 4000 });
   // Poll payment reconciliation while unpaid gcash
   useQuery({
     queryKey: ["pay-status", id],
@@ -54,10 +56,7 @@ export default function Track() {
         {isPickup ? (
           <MapView markers={[{ lat: o.delivery_lat, lng: o.delivery_lng, emoji: "🏪", label: "Pick-up at shop" }]} zoom={15} />
         ) : (
-          <MapView
-            markers={[{ lat: o.rider_lat, lng: o.rider_lng, emoji: riderEmoji, label: "Rider" }, { lat: o.delivery_lat, lng: o.delivery_lng, emoji: "📍", label: "You" }]}
-            line={{ from: { lat: o.rider_lat, lng: o.rider_lng }, to: { lat: o.delivery_lat, lng: o.delivery_lng } }}
-          />
+          <LiveTrackMap orderId={o.id} riderEmoji={riderEmoji} />
         )}
         <View style={[styles.topBar, { paddingTop: insets.top + spacing.sm }]}>
           <Pressable testID="back-btn" onPress={() => router.replace("/(customer)/orders")} style={styles.circle}><Text>←</Text></Pressable>
@@ -69,7 +68,13 @@ export default function Track() {
       <ScrollView style={styles.sheet} contentContainerStyle={{ paddingBottom: insets.bottom + spacing.xxl }}>
         <View style={styles.handle} />
         <Text style={styles.title}>Order {o.order_no}</Text>
-        <Text style={styles.sub}>{METHOD[o.delivery_method]} {isPickup ? "" : "· ETA 25–40 min"}</Text>
+        <Text style={styles.sub}>{METHOD[o.delivery_method]}{isPickup ? "" : track?.moving ? ` · Arriving in ~${track.eta_min} min` : " · ETA 25–40 min"}</Text>
+        {!isPickup && track?.moving && (
+          <View style={styles.liveRow} testID="live-tracking-banner">
+            <View style={styles.liveDot} />
+            <Text style={styles.liveText}>{riderEmoji} Rider is on the way — watch the pin move</Text>
+          </View>
+        )}
 
         {/* Payment banner */}
         <View style={[styles.payBanner, { backgroundColor: o.payment_status === "paid" ? colors.success + "18" : colors.warning + "18" }]}>
@@ -134,6 +139,9 @@ const styles = StyleSheet.create({
   handle: { alignSelf: "center", width: 40, height: 4, borderRadius: 2, backgroundColor: colors.border, marginBottom: spacing.md },
   title: { fontSize: 22, fontWeight: "700", color: colors.onSurface },
   sub: { color: colors.muted, marginTop: 2 },
+  liveRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: spacing.sm, backgroundColor: colors.brandPrimary + "14", paddingHorizontal: spacing.md, paddingVertical: 8, borderRadius: radius.pill, alignSelf: "flex-start" },
+  liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.brandPrimary },
+  liveText: { color: colors.brandPrimary, fontSize: 12, fontWeight: "700" },
   payBanner: { flexDirection: "row", alignItems: "center", padding: spacing.md, borderRadius: radius.md, marginTop: spacing.md, gap: spacing.md },
   payTitle: { fontWeight: "800", fontSize: 14 },
   payRef: { color: colors.muted, fontSize: 11, marginTop: 2 },

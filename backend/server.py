@@ -395,7 +395,12 @@ async def create_order(data: OrderIn, u=Depends(require("customer"))):
         "total": total, "created_at": now_iso(), "updated_at": now_iso(),
         "rider_lat": BINAN["lat"], "rider_lng": BINAN["lng"], "rider_name": None,
     }
+    order["out_for_delivery_at"] = None
+    order["rider_manual"] = False
     await db.orders.insert_one(order)
+    # Best-effort stock decrement so low-stock alerts stay realistic
+    for i in data.items:
+        await db.products.update_one({"id": i.product_id}, {"$inc": {"stock": -i.quantity}})
     order.pop("_id", None)
     return order
 
@@ -432,7 +437,10 @@ async def update_status(oid: str, data: OrderStatusIn, u=Depends(require("flower
     flow = o.get("status_flow") or status_flow(o.get("delivery_method", "in_house"))
     if data.status not in flow + ["cancelled"]:
         raise HTTPException(400, "Invalid status")
-    await db.orders.update_one({"id": oid}, {"$set": {"status": data.status, "updated_at": now_iso()}})
+    extra = {}
+    if data.status == "out_for_delivery":
+        extra["out_for_delivery_at"] = now_iso()
+    await db.orders.update_one({"id": oid}, {"$set": {"status": data.status, "updated_at": now_iso(), **extra}})
     await notify(o["customer_id"], "Order update", f"Your order {o['order_no']} is now {data.status.replace('_', ' ')}.",
                  order_id=oid, kind="order")
     return await db.orders.find_one({"id": oid}, {"_id": 0})
@@ -443,8 +451,50 @@ async def update_rider(oid: str, data: RiderLocationIn, u=Depends(require("flowe
     o = await db.orders.find_one({"id": oid})
     if not o or shop["id"] not in o["shop_ids"]:
         raise HTTPException(403)
-    await db.orders.update_one({"id": oid}, {"$set": {"rider_lat": data.lat, "rider_lng": data.lng, "rider_name": u["name"]}})
+    await db.orders.update_one({"id": oid}, {"$set": {"rider_lat": data.lat, "rider_lng": data.lng, "rider_name": u["name"], "rider_manual": True}})
     return {"ok": True}
+
+@api.get("/orders/{oid}/tracking")
+async def order_tracking(oid: str):
+    """Public live-tracking pin. Order id is an unguessable UUID.
+    For in-house orders that are out for delivery, the rider position is
+    interpolated from the shop toward the customer over ~8 minutes so the
+    customer sees the pin move. A real GPS share by the owner overrides this."""
+    o = await db.orders.find_one({"id": oid}, {"_id": 0})
+    if not o:
+        raise HTTPException(404, "Order not found")
+    dest_lat = o.get("delivery_lat") or BINAN["lat"]
+    dest_lng = o.get("delivery_lng") or BINAN["lng"]
+    start_lat, start_lng = BINAN["lat"], BINAN["lng"]
+    if o.get("shop_ids"):
+        shop = await db.shops.find_one({"id": o["shop_ids"][0]}, {"_id": 0})
+        if shop:
+            start_lat = shop.get("lat") or start_lat
+            start_lng = shop.get("lng") or start_lng
+    method = o.get("delivery_method")
+    status = o.get("status")
+    base = {"dest_lat": dest_lat, "dest_lng": dest_lng, "start_lat": start_lat,
+            "start_lng": start_lng, "status": status, "method": method}
+    if method == "pickup":
+        return {**base, "lat": start_lat, "lng": start_lng, "moving": False, "progress": 0, "eta_min": 0}
+    if o.get("rider_manual") and o.get("rider_lat") is not None:
+        return {**base, "lat": o["rider_lat"], "lng": o["rider_lng"], "moving": status == "out_for_delivery", "progress": None, "eta_min": 0}
+    progress = 0.0
+    if status == "completed":
+        progress = 1.0
+    elif status == "out_for_delivery" and o.get("out_for_delivery_at"):
+        try:
+            t0 = datetime.fromisoformat(o["out_for_delivery_at"])
+            elapsed = (datetime.now(timezone.utc) - t0).total_seconds()
+            progress = max(0.0, min(1.0, elapsed / 480.0))
+        except Exception:
+            progress = 0.0
+    lat = start_lat + (dest_lat - start_lat) * progress
+    lng = start_lng + (dest_lng - start_lng) * progress
+    await db.orders.update_one({"id": oid}, {"$set": {"rider_lat": lat, "rider_lng": lng}})
+    moving = status == "out_for_delivery" and progress < 1.0
+    eta_min = max(1, round((1 - progress) * 8)) if moving else 0
+    return {**base, "lat": lat, "lng": lng, "moving": moving, "progress": round(progress, 3), "eta_min": eta_min}
 
 # ---------- Payments (PayMongo GCash + COD) ----------
 def paymongo_headers():

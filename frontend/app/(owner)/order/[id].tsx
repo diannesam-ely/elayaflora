@@ -6,7 +6,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { colors, spacing, radius } from "@/src/theme";
 import { api } from "@/src/api";
-import MapView from "@/src/components/LeafletMap";
+import LiveTrackMap from "@/src/components/LiveTrackMap";
 
 const LABEL: Record<string, string> = {
   pending: "Pending", confirmed: "Confirmed", preparing: "Preparing",
@@ -99,8 +99,7 @@ export default function OwnerOrderDetail() {
           <View>
             <Text style={styles.section}>In-House Delivery Tracking</Text>
             <View style={{ height: 180, borderRadius: radius.md, overflow: "hidden" }}>
-              <MapView markers={[{ lat: o.rider_lat, lng: o.rider_lng, emoji: "🛵", label: "You" }, { lat: o.delivery_lat, lng: o.delivery_lng, emoji: "📍", label: "Customer" }]}
-                line={{ from: { lat: o.rider_lat, lng: o.rider_lng }, to: { lat: o.delivery_lat, lng: o.delivery_lng } }} />
+              <LiveTrackMap orderId={o.id} riderEmoji="🛵" />
             </View>
             <Pressable testID="share-loc-btn" onPress={shareLocation} disabled={locBusy || riderMut.isPending} style={styles.locBtn}>
               <Text style={styles.locText}>{locBusy || riderMut.isPending ? "Sharing..." : "📍 Share my live location"}</Text>

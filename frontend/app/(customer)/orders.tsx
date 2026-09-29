@@ -4,7 +4,8 @@ import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
 import { colors, spacing, radius } from "@/src/theme";
-import { api } from "@/src/api";
+import { api, mediaUrl } from "@/src/api";
+import { useCart } from "@/src/cart";
 
 const STATUS_META: Record<string, { label: string; color: string }> = {
   pending: { label: "Pending", color: "#B87B41" },
@@ -19,7 +20,17 @@ const STATUS_META: Record<string, { label: string; color: string }> = {
 export default function Orders() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { add, clear } = useCart();
   const { data: orders = [], isLoading } = useQuery({ queryKey: ["my-orders"], queryFn: () => api("/orders/mine"), refetchInterval: 8000 });
+
+  const reorder = (o: any) => {
+    clear();
+    o.items.forEach((i: any) => add({
+      product_id: i.product_id, product_type: "bouquet", shop_id: i.shop_id,
+      name: i.name, image: i.image, unit_price: i.unit_price, quantity: i.quantity,
+    }));
+    router.push("/(customer)/cart");
+  };
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.surface }}>
@@ -43,7 +54,7 @@ export default function Orders() {
               </View>
               <View style={styles.itemsRow}>
                 {o.items.slice(0, 3).map((i: any) => (
-                  <Image key={i.product_id} source={{ uri: i.image }} style={styles.itemImg} contentFit="cover" />
+                  <Image key={i.product_id} source={{ uri: mediaUrl(i.image) }} style={styles.itemImg} contentFit="cover" />
                 ))}
                 {o.items.length > 3 && (
                   <View style={[styles.itemImg, { alignItems: "center", justifyContent: "center", backgroundColor: colors.surfaceSecondary }]}>
@@ -52,9 +63,12 @@ export default function Orders() {
                 )}
               </View>
               <View style={styles.rowBot}>
-                <Text style={styles.addr} numberOfLines={1}>📍 {o.delivery_address}</Text>
+                <Text style={styles.addr} numberOfLines={1}>📍 {o.delivery_address || "Pick-up"}</Text>
                 <Text style={styles.price}>₱{o.total.toLocaleString()}</Text>
               </View>
+              <Pressable testID={`reorder-${o.id}`} onPress={() => reorder(o)} style={styles.reorderBtn}>
+                <Text style={styles.reorderText}>🔁 Reorder</Text>
+              </Pressable>
             </Pressable>
           );
         })}
@@ -77,4 +91,6 @@ const styles = StyleSheet.create({
   rowBot: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   addr: { flex: 1, color: colors.muted, fontSize: 12 },
   price: { color: colors.brandPrimary, fontWeight: "700", fontSize: 15 },
+  reorderBtn: { alignSelf: "flex-start", backgroundColor: colors.brandTertiary, paddingHorizontal: spacing.md, paddingVertical: 8, borderRadius: radius.pill, marginTop: 2 },
+  reorderText: { color: colors.onBrandTertiary, fontWeight: "800", fontSize: 12 },
 });

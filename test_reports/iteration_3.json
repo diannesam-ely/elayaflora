@@ -1,0 +1,40 @@
+{
+  "summary": "Verified all three new ELAYA features (Live Order Map, Low Stock Alerts, Reorder) end-to-end. Backend: added /app/backend/tests/test_new_features.py with 8 tests covering GET /api/orders/{oid}/tracking (public, no-auth), stock decrement on order placement, PATCH /api/owner/orders/{oid}/rider manual-override, and PUT /api/owner/products/{pid} preserving images[]. Combined suite = 37/37 PASS (29 baseline + 8 new). Confirmed simulation moves the pin: progress advanced from 0.00X to a larger value over ~6s, and lat/lng interpolated toward delivery point; manual rider PATCH overrides the simulated position exactly. Frontend (mobile viewport 390x844): (1) Customer /orders shows 21 orders each with a working reorder-<id> Pressable — tapping clears the cart, adds all items, and navigates to /cart with correct item + total (verified with a 2xWhite Lily Grace = ₱2,100). (2) Track screen at /track/<in_house_out_for_delivery_order> renders the live map (Leaflet in iframe) with rider 🛵 pin and destination 📍 pin, and testID live-tracking-banner appears reading '🛵 Rider is on the way — watch the pin move' with 'Arriving in ~N min' ETA and rider name shown. (3) Owner /dashboard shows testID low-stock-alert card listing 'Sunny Delight — 3 left' (amber/low style), tap navigates to /products. (4) /products has Restock-<id> Pressable per bouquet; tapping opens the modal with stock-input and save-stock-btn; entering 77 and saving updates stock to 77 and preserves multi-angle images (backend PUT verified via test_put_product_preserves_images). No red screens, no deprecated Expo packages, no console/page errors during tests.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/(customer)/track/[id]", "issues": ["ETA display shows 'Arriving in ~0 min' when the simulation clock has run past 8 minutes (progress=1) even though the order status is still 'out_for_delivery'. Consider auto-transitioning to 'completed' when progress reaches 1.0, or showing 'Arriving now' text when eta_min == 0. Not a bug — just polish."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_elaya_backend.py",
+    "/app/backend/tests/test_new_features.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "(Optional polish) When /tracking returns progress==1.0 and status is still out_for_delivery, either auto-complete or show a 'Arriving now / just outside' banner instead of 'Arriving in ~0 min'.",
+    "(Optional) Consider limiting PUT /owner/products so partial updates (e.g., only stock) don't require the client to resend the entire product body — a PATCH /stock endpoint would prevent future regressions where a client forgets to include images[] and wipes them."
+  ],
+  "critical_code_review_comments": [
+    "server.py order_tracking() correctly interpolates lat/lng linearly from shop start toward delivery over 480s, gates 'moving' on out_for_delivery, honors rider_manual override, and handles pickup as stationary — verified.",
+    "create_order() decrements product stock via $inc: -qty (best-effort) — verified stock dropped by ordered qty.",
+    "PUT /owner/products/{pid} uses model_dump() with the full ProductIn body; because ProductIn.images is Optional, a client that omits it would set images to None. The Restock modal in (owner)/products.tsx correctly resends the entire product incl. images[], so images are preserved. Recommend a dedicated stock-only endpoint to make this safer.",
+    "orders.tsx reorder() correctly clears cart, iterates order.items, and pushes to /(customer)/cart — verified in UI with 2 items → ₱2,100 total.",
+    "dashboard.tsx computes lowStock = products with stock<=5, sorts asc, and renders testID low-stock-alert — verified visible for the seeded 'Sunny Delight' (3 left)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_new_features.py (NEW: 8 tests for tracking, stock decrement, rider override, PUT images preservation)"
+  ],
+  "success_rate": {
+    "backend": "100% (37/37 — 29 baseline + 8 new-features)",
+    "frontend": "100% (reorder + live map + low-stock + restock all verified with testIDs and screenshots)"
+  },
+  "seed_data_creation": "Tests create TEST_* orders/products via API and clean up the TEST product afterward. No seeded data mutated. Note: due to cumulative testing runs, seeded customer now has 21 orders (including many TEST_ ones from prior iterations) — a periodic cleanup script would keep marketplace clean.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: cd /app/backend/tests && EXPO_PUBLIC_BACKEND_URL=$(grep EXPO_PUBLIC_BACKEND_URL /app/frontend/.env | cut -d= -f2) pytest -v -n 0. The test_tracking_moves_after_out_for_delivery test sleeps 6s to verify progress advances (~0.0125/s over 480s), so the whole suite takes ~20s. For UI, to force an in-house order into out_for_delivery quickly, log in as owner@elaya.ph and PATCH /api/owner/orders/{oid}/status through {confirmed → preparing → ready_for_delivery → out_for_delivery}; the Live map at /track/{oid} then renders the Leaflet iframe with rider + destination pins and testID live-tracking-banner appears.",
+  "rca_of_issue": "N/A — no bugs found. All three new features (Live Order Map, Low Stock Alerts, Reorder) are correctly implemented on both backend and frontend."
+}

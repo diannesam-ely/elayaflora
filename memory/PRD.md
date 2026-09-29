@@ -43,6 +43,12 @@ Design and develop ELAYA, a mobile flower marketplace for Biñan, Laguna, with a
 ## Seeded Accounts
 See `/app/memory/test_credentials.md`.
 
+## Live Tracking + Low Stock + Reorder (2026-06-29)
+- **Live Order Map**: New public `GET /api/orders/{id}/tracking` interpolates the rider from the shop toward the customer over ~8 min once an in-house order is `out_for_delivery` (owner's real GPS share via `/rider` sets `rider_manual` and overrides the simulation). New `src/components/LiveTrackMap.tsx` is a self-polling Leaflet map that animates the pin smoothly (no tile reload) on web + native; used on customer `track/[id]` (with live ETA + "Rider is on the way" banner) and owner `order/[id]`. `status→out_for_delivery` now stamps `out_for_delivery_at`.
+- **Low Stock Alerts**: Owner dashboard shows an amber `low-stock-alert` card listing bouquets with stock ≤ 5 (out-of-stock in red), tap → Products. Products screen has a per-item Restock modal (`restock-<id>` → `stock-input` + `save-stock-btn`) that PUTs the full product (images[] preserved). Orders now decrement product stock so alerts stay realistic.
+- **Reorder**: Customer Orders cards have a `reorder-<id>` button that clears the cart, re-adds all items and opens Cart. Fixed order/cart thumbnails to resolve via `mediaUrl` (owner-uploaded `/api/files/...` refs).
+- Testing: 37/37 backend tests pass; all three frontend flows verified; no bugs.
+
 ## Backlog / Remaining
 - P1: Real Google Maps API key + native `react-native-maps`; real Lalamove/Grab courier API; PayMongo webhook signing for instant confirmation.
 - P2: Order state machine hardening (forward-only), upload size/MIME caps, permit file auth, push notifications (on request), ratings/reviews, promo codes.

@@ -49,9 +49,9 @@ export default function OwnerDashboard() {
 
   // ---- Approved dashboard ----
   const pending = orders.filter((o: any) => o.status === "pending").length;
-  const completed = orders.filter((o: any) => o.status === "completed").length;
   const paid = orders.filter((o: any) => o.payment_status === "paid").length;
   const revenue = orders.filter((o: any) => o.status === "completed").reduce((s: number, o: any) => s + o.total, 0);
+  const lowStock = products.filter((p: any) => (p.stock ?? 0) <= 5).sort((a: any, b: any) => (a.stock ?? 0) - (b.stock ?? 0));
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.surface }}>
@@ -85,6 +85,29 @@ export default function OwnerDashboard() {
         </View>
 
         {notifs.length > 0 && <View style={{ paddingHorizontal: spacing.lg }}><Notifs notifs={notifs} /></View>}
+
+        {lowStock.length > 0 && (
+          <Pressable testID="low-stock-alert" onPress={() => router.push("/(owner)/products")} style={styles.lowCard}>
+            <View style={styles.lowHead}>
+              <Text style={styles.lowTitle}>⚠️ Low Stock Alert</Text>
+              <Text style={styles.lowManage}>Manage →</Text>
+            </View>
+            <Text style={styles.lowSub}>{lowStock.length} bouquet{lowStock.length === 1 ? "" : "s"} need restocking soon</Text>
+            {lowStock.slice(0, 4).map((p: any) => {
+              const out = (p.stock ?? 0) <= 0;
+              return (
+                <View key={p.id} style={styles.lowRow} testID={`low-stock-${p.id}`}>
+                  <Image source={{ uri: mediaUrl(p.image) }} style={styles.lowImg} contentFit="cover" />
+                  <Text style={styles.lowName} numberOfLines={1}>{p.name}</Text>
+                  <View style={[styles.lowBadge, { backgroundColor: out ? colors.error : colors.warning }]}>
+                    <Text style={styles.lowBadgeText}>{out ? "OUT OF STOCK" : `${p.stock} left`}</Text>
+                  </View>
+                </View>
+              );
+            })}
+            {lowStock.length > 4 && <Text style={styles.lowMore}>+{lowStock.length - 4} more</Text>}
+          </Pressable>
+        )}
 
         <Text style={styles.sectionTitle}>Recent Orders</Text>
         <View style={{ paddingHorizontal: spacing.lg, gap: spacing.sm }}>
@@ -168,6 +191,17 @@ const styles = StyleSheet.create({
   orderPrice: { color: colors.brandPrimary, fontWeight: "700", fontSize: 15 },
   payTag: { fontSize: 10, fontWeight: "800", marginTop: 2 },
   notifHead: { fontSize: 16, fontWeight: "700", color: colors.onSurface, marginTop: spacing.md },
+  lowCard: { marginHorizontal: spacing.lg, marginTop: spacing.lg, backgroundColor: colors.warning + "12", borderRadius: radius.md, padding: spacing.md, borderWidth: 1, borderColor: colors.warning + "44", gap: 6 },
+  lowHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  lowTitle: { fontSize: 15, fontWeight: "800", color: colors.warning },
+  lowManage: { fontSize: 12, fontWeight: "700", color: colors.brandPrimary },
+  lowSub: { fontSize: 12, color: colors.onSurfaceSecondary, marginBottom: 4 },
+  lowRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingVertical: 4 },
+  lowImg: { width: 34, height: 34, borderRadius: radius.sm, backgroundColor: colors.surfaceTertiary },
+  lowName: { flex: 1, fontSize: 13, fontWeight: "600", color: colors.onSurface },
+  lowBadge: { paddingHorizontal: spacing.sm, paddingVertical: 3, borderRadius: radius.pill },
+  lowBadgeText: { color: "#FFFFFF", fontSize: 10, fontWeight: "800" },
+  lowMore: { fontSize: 12, color: colors.muted, marginTop: 2 },
   notif: { backgroundColor: colors.surfaceSecondary, borderRadius: radius.md, padding: spacing.md },
   notifUnread: { borderLeftWidth: 3, borderLeftColor: colors.brandPrimary },
   notifTitle: { fontWeight: "700", color: colors.onSurface, fontSize: 13 },
